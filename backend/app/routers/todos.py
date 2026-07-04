@@ -5,8 +5,8 @@ from sqlalchemy import func, or_
 from sqlmodel import Session, col, select
 
 from app.db import get_session
-from app.models import Todo
-from app.schemas import TodoListResponse, TodoRead
+from app.models import Todo, utcnow
+from app.schemas import TodoCreate, TodoListResponse, TodoRead, TodoUpdate
 
 router = APIRouter(prefix="/todos", tags=["todos"])
 
@@ -52,9 +52,45 @@ def list_todos(
     )
 
 
+@router.post("", response_model=TodoRead, status_code=201)
+def create_todo(data: TodoCreate, session: SessionDep) -> Todo:
+    # スキーマ → テーブルモデルへの詰め替え。検証済みの値だけが渡る
+    todo = Todo.model_validate(data)
+    session.add(todo)
+    session.commit()
+    session.refresh(todo)  # DB が採番した id 等を読み戻す
+    return todo
+
+
 @router.get("/{todo_id}", response_model=TodoRead)
 def get_todo(todo_id: int, session: SessionDep) -> Todo:
     todo = session.get(Todo, todo_id)
     if todo is None:
         raise HTTPException(status_code=404, detail="Todo not found")
     return todo
+
+
+@router.patch("/{todo_id}", response_model=TodoRead)
+def update_todo(todo_id: int, data: TodoUpdate, session: SessionDep) -> Todo:
+    todo = session.get(Todo, todo_id)
+    if todo is None:
+        raise HTTPException(status_code=404, detail="Todo not found")
+
+    # exclude_unset: 「リクエストに含まれていた項目」だけを取り出す。
+    # これにより「送らない = 変更しない」「null を送る = 消す」を区別できる
+    updates = data.model_dump(exclude_unset=True)
+    todo.sqlmodel_update(updates)
+    todo.updated_at = utcnow()
+    session.add(todo)
+    session.commit()
+    session.refresh(todo)
+    return todo
+
+
+@router.delete("/{todo_id}", status_code=204)
+def delete_todo(todo_id: int, session: SessionDep) -> None:
+    todo = session.get(Todo, todo_id)
+    if todo is None:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    session.delete(todo)
+    session.commit()

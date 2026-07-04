@@ -70,3 +70,5 @@ uv run pytest
   （[レビュー](docs/01_sprint1/review.md) / [レトロ](docs/01_sprint1/retrospective.md)）
 - [スプリント2: Read（一覧・詳細）](docs/02_sprint2/backlog.md)
   （[レビュー](docs/02_sprint2/review.md) / [レトロ](docs/02_sprint2/retrospective.md)）
+- [スプリント3: Create / Update / Delete](docs/03_sprint3/backlog.md)
+  （[レビュー](docs/03_sprint3/review.md) / [レトロ](docs/03_sprint3/retrospective.md)）
