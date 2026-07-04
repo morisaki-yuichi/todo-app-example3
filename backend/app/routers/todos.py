@@ -85,3 +85,12 @@ def update_todo(todo_id: int, data: TodoUpdate, session: SessionDep) -> Todo:
     session.commit()
     session.refresh(todo)
     return todo
+
+
+@router.delete("/{todo_id}", status_code=204)
+def delete_todo(todo_id: int, session: SessionDep) -> None:
+    todo = session.get(Todo, todo_id)
+    if todo is None:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    session.delete(todo)
+    session.commit()
