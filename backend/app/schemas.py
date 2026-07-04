@@ -1,7 +1,24 @@
 from datetime import date, datetime
 
-from pydantic import field_validator
+from pydantic import EmailStr, field_validator
 from sqlmodel import Field, SQLModel
+
+
+class UserCreate(SQLModel):
+    email: EmailStr = Field(max_length=255)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginRequest(SQLModel):
+    email: EmailStr
+    password: str
+
+
+class UserRead(SQLModel):
+    """password_hash を含めない「見せる形」。"""
+
+    id: int
+    email: str
 
 
 class TodoCreate(SQLModel):
