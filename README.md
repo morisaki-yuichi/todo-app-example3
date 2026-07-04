@@ -28,11 +28,18 @@ docker compose up -d --build
 - API: http://localhost:8002/health が `{"status":"ok"}` を返せば起動成功
 - API ドキュメント（Swagger UI）: http://localhost:8002/docs
 
-バックエンドのテスト:
+データベースの準備（マイグレーション + 開発用データ）:
 
 ```bash
 cd backend
-uv sync             # 初回のみ（ロックファイルから依存を復元）
+uv sync                          # 初回のみ（ロックファイルから依存を復元）
+uv run alembic upgrade head      # テーブル作成（これを忘れると /todos が 500 になる）
+uv run python -m scripts.seed    # 開発用の TODO 15件を投入（任意）
+```
+
+テスト（テスト専用 DB `todo_test` を自動作成して実行される）:
+
+```bash
 uv run pytest
 ```
 
@@ -61,3 +68,5 @@ uv run pytest
 
 - [スプリント1: 環境構築](docs/01_sprint1/backlog.md)
   （[レビュー](docs/01_sprint1/review.md) / [レトロ](docs/01_sprint1/retrospective.md)）
+- [スプリント2: Read（一覧・詳細）](docs/02_sprint2/backlog.md)
+  （[レビュー](docs/02_sprint2/review.md) / [レトロ](docs/02_sprint2/retrospective.md)）

@@ -25,9 +25,9 @@
 |---|---|---|---|---|---|---|
 | 1 | PBI-01 | 開発環境の土台: Docker Compose（api + db）、uv、FastAPI 起動、`.env` / `.env.example`、`/docs` 確認 | 基盤 | （全体の前提） | S1 | 完了（PR #1） |
 | 2 | PBI-02 | テストと CI の最小構成: pytest + httpx2 導入、GitHub Actions で PR 時に pytest 実行 | 基盤 | （全体の前提） | S1 | 完了（PR #1） |
-| 3 | PBI-03 | DB 基盤: SQLModel モデル、Alembic マイグレーション、Postgres 接続、テスト用 DB | 基盤 | （US-03〜08 の前提） | S2 | 未着手 |
-| 4 | PBI-04 | TODO 一覧 API（ソート・絞り込み・ページネーション） | 機能 | US-04 | S2 | 未着手 |
-| 5 | PBI-05 | TODO 詳細 API | 機能 | US-05 | S2 | 未着手 |
+| 3 | PBI-03 | DB 基盤: SQLModel モデル、Alembic マイグレーション、Postgres 接続、テスト用 DB | 基盤 | （US-03〜08 の前提） | S2 | 完了（PR #2） |
+| 4 | PBI-04 | TODO 一覧 API（ソート・絞り込み・ページネーション） | 機能 | US-04 | S2 | 完了（PR #2） |
+| 5 | PBI-05 | TODO 詳細 API | 機能 | US-05 | S2 | 完了（PR #2） |
 | 6 | PBI-06 | TODO 作成 API（バリデーション・境界値） | 機能 | US-03 | S3 | 未着手 |
 | 7 | PBI-07 | TODO 編集 API（PATCH 部分更新） | 機能 | US-06 | S3 | 未着手 |
 | 8 | PBI-08 | TODO 削除 API | 機能 | US-07 | S3 | 未着手 |

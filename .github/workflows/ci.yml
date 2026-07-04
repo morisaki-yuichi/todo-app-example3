@@ -8,6 +8,22 @@ on:
 jobs:
   backend-test:
     runs-on: ubuntu-latest
+    services:
+      # テストが実 Postgres を使うため、ジョブ専用の DB コンテナを立てる。
+      # ポートと認証情報はローカル開発の既定値（config.py / .env.example）に合わせる
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: todo
+          POSTGRES_PASSWORD: todo_dev_password
+          POSTGRES_DB: todo
+        ports:
+          - "5433:5432"
+        options: >-
+          --health-cmd "pg_isready -U todo"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     defaults:
       run:
         # このジョブの run はすべて backend/ で実行する
