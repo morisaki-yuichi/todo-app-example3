@@ -14,6 +14,28 @@ CRUD 機能を持つマルチユーザー TODO アプリを、スクラム開発
 - テスト: pytest + httpx / Vitest + React Testing Library / Playwright
 - インフラ: Docker + Docker Compose / GitHub Actions
 
+## クイックスタート
+
+必要なもの: Docker（Compose 含む）、[uv](https://docs.astral.sh/uv/)、Git
+
+```bash
+git clone https://github.com/morisaki-yuichi/todo-app-example3.git
+cd todo-app-example3
+cp .env.example .env        # ポート等は必要に応じて .env で変更
+docker compose up -d --build
+```
+
+- API: http://localhost:8002/health が `{"status":"ok"}` を返せば起動成功
+- API ドキュメント（Swagger UI）: http://localhost:8002/docs
+
+バックエンドのテスト:
+
+```bash
+cd backend
+uv sync             # 初回のみ（ロックファイルから依存を復元）
+uv run pytest
+```
+
 ## ドキュメント
 
 ### プロジェクト全体
@@ -24,14 +46,18 @@ CRUD 機能を持つマルチユーザー TODO アプリを、スクラム開発
 - [ユーザーストーリー](docs/00_project/user-stories.md)
 - [プロダクトバックログ（DoD つき）](docs/00_project/product-backlog.md)
 
-### 教材（開発に合わせて整備予定）
+### 教材
 
-- 開発トレースガイド（dev-walkthrough.md）
-- 概念解説集（concepts.md）
-- キャッチアップ集（catch-up.md）
-- 演習編（exercises.md）
+- [開発トレースガイド（dev-walkthrough.md）](docs/00_project/dev-walkthrough.md) —
+  コミット履歴を目次に、写経で追体験するためのガイド
+- [概念解説集（concepts.md）](docs/00_project/concepts.md) —
+  登場した概念を「定義 / なぜ必要か / このリポジトリでの実例」で整理
+- キャッチアップ集（catch-up.md）・演習編（exercises.md）は開発に合わせて整備予定
 
 ### スプリント記録
 
 各スプリントのバックログ・レビュー・レトロスペクティブは `docs/01_sprintN/` 配下に
 スプリント終了ごとに追加します。
+
+- [スプリント1: 環境構築](docs/01_sprint1/backlog.md)
+  （[レビュー](docs/01_sprint1/review.md) / [レトロ](docs/01_sprint1/retrospective.md)）
