@@ -46,6 +46,8 @@ class Todo(SQLModel, table=True):
     description: str | None = Field(default=None, max_length=1000)
     due_date: date | None = None
     completed: bool = False
+    # 所有者。S2〜S3 の間は存在せず、既存データのマイグレーションつきで追加した
+    user_id: int = Field(foreign_key="users.id", index=True)
     # タイムゾーンつき（timestamptz）で UTC を保存する。表示時の変換はフロントの仕事
     created_at: datetime = Field(
         default_factory=utcnow, sa_type=DateTime(timezone=True)

@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
 
-def test_create_todo_returns_201_and_body(client: TestClient) -> None:
-    response = client.post(
+def test_create_todo_returns_201_and_body(auth_client: TestClient) -> None:
+    response = auth_client.post(
         "/todos",
         json={
             "title": "牛乳を買う",
@@ -21,18 +21,18 @@ def test_create_todo_returns_201_and_body(client: TestClient) -> None:
     assert body["created_at"] is not None
 
 
-def test_create_todo_persists(client: TestClient) -> None:
-    created = client.post("/todos", json={"title": "保存確認"}).json()
+def test_create_todo_persists(auth_client: TestClient) -> None:
+    created = auth_client.post("/todos", json={"title": "保存確認"}).json()
 
-    fetched = client.get(f"/todos/{created['id']}")
+    fetched = auth_client.get(f"/todos/{created['id']}")
 
     assert fetched.status_code == 200
     assert fetched.json()["title"] == "保存確認"
 
 
-def test_create_todo_minimal(client: TestClient) -> None:
+def test_create_todo_minimal(auth_client: TestClient) -> None:
     # title だけで作成できる（description / due_date は任意）
-    response = client.post("/todos", json={"title": "最小構成"})
+    response = auth_client.post("/todos", json={"title": "最小構成"})
 
     assert response.status_code == 201
     body = response.json()
@@ -40,17 +40,17 @@ def test_create_todo_minimal(client: TestClient) -> None:
     assert body["due_date"] is None
 
 
-def test_create_todo_allows_past_due_date(client: TestClient) -> None:
+def test_create_todo_allows_past_due_date(auth_client: TestClient) -> None:
     # 過去日を許可するのは仕様（「昨日やるはずだった」を登録できる）
-    response = client.post(
+    response = auth_client.post(
         "/todos", json={"title": "過去日", "due_date": "2020-01-01"}
     )
 
     assert response.status_code == 201
 
 
-def test_create_todo_missing_title_is_422(client: TestClient) -> None:
-    response = client.post("/todos", json={"description": "タイトルなし"})
+def test_create_todo_missing_title_is_422(auth_client: TestClient) -> None:
+    response = auth_client.post("/todos", json={"description": "タイトルなし"})
 
     assert response.status_code == 422
     error = response.json()["detail"][0]
@@ -58,39 +58,39 @@ def test_create_todo_missing_title_is_422(client: TestClient) -> None:
     assert error["type"] == "missing"  # なぜ
 
 
-def test_create_todo_empty_title_is_422(client: TestClient) -> None:
-    response = client.post("/todos", json={"title": ""})
+def test_create_todo_empty_title_is_422(auth_client: TestClient) -> None:
+    response = auth_client.post("/todos", json={"title": ""})
 
     assert response.status_code == 422
 
 
-def test_create_todo_title_boundary(client: TestClient) -> None:
+def test_create_todo_title_boundary(auth_client: TestClient) -> None:
     # 境界値: 100文字は通り、101文字は落ちる
-    assert client.post("/todos", json={"title": "あ" * 100}).status_code == 201
-    response = client.post("/todos", json={"title": "あ" * 101})
+    assert auth_client.post("/todos", json={"title": "あ" * 100}).status_code == 201
+    response = auth_client.post("/todos", json={"title": "あ" * 101})
     assert response.status_code == 422
     error = response.json()["detail"][0]
     assert error["loc"] == ["body", "title"]
     assert error["type"] == "string_too_long"
 
 
-def test_create_todo_description_boundary(client: TestClient) -> None:
+def test_create_todo_description_boundary(auth_client: TestClient) -> None:
     assert (
-        client.post(
+        auth_client.post(
             "/todos", json={"title": "境界", "description": "い" * 1000}
         ).status_code
         == 201
     )
     assert (
-        client.post(
+        auth_client.post(
             "/todos", json={"title": "境界", "description": "い" * 1001}
         ).status_code
         == 422
     )
 
 
-def test_create_todo_invalid_due_date_is_422(client: TestClient) -> None:
-    response = client.post(
+def test_create_todo_invalid_due_date_is_422(auth_client: TestClient) -> None:
+    response = auth_client.post(
         "/todos", json={"title": "日付不正", "due_date": "2026-13-45"}
     )
 
