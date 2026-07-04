@@ -9,6 +9,17 @@ services:
       - ./backend:/app
       # イメージ内の仮想環境をホストの .venv で隠さないための匿名ボリューム
       - /app/.venv
+    environment:
+      # コンテナ内からは「サービス名 db」の 5432 番に接続する（名前解決）。
+      # ホスト上のツール（pytest / alembic）は config.py の既定値 localhost:5433 を使う
+      DB_HOST: db
+      DB_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
     command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   db:
@@ -22,6 +33,12 @@ services:
     volumes:
       # 名前つきボリュームに永続化（コンテナを消してもデータが残る）
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      # api の起動を「db が接続を受け付けるまで」待たせるための死活判定
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   db_data:
