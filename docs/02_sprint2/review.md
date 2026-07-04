@@ -76,4 +76,7 @@
 
 ## マージ後の main での動作確認（マージ作業の一部）
 
-（マージ後にこの節へ結果を追記する）
+2026-07-05、PR #2 のマージコミットを pull した main 上で実施:
+
+- `docker compose up -d --build` → `GET /todos?per_page=3` が 200・total=15 ✅
+- `uv run pytest` → 12 passed ✅
