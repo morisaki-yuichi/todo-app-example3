@@ -142,4 +142,92 @@ Python の非同期構文。FastAPI が高速と言われる理由の中核。
 
 ---
 
-（S2 以降の概念はスプリント終了ごとにここへ追記する）
+## スプリント2で登場した概念
+
+### SQLModel
+
+**① 一言定義**: SQLAlchemy（ORM）と Pydantic（バリデーション）を1つのクラス定義に
+統合したライブラリ。`table=True` のクラスは DB テーブルであり、同時に Pydantic モデル。
+
+**② なぜ必要か**: ORM 用・API 用でモデル定義が二重化すると、片方だけ変えて
+ずれる事故が起きる（DB には入るのに API で返らない項目、など）。定義を一元化しつつ、
+見せる形は別スキーマ（`TodoRead`）で制御する、が本リポジトリの使い分け。
+
+**③ 実例**: [backend/app/models.py](../../backend/app/models.py) の `Todo`
+（テーブル定義）と [backend/app/schemas.py](../../backend/app/schemas.py) の
+`TodoRead`（レスポンス用・`table=True` なし）
+→ [Step 2-3](dev-walkthrough.md#step-2-3-todo-モデルと初期マイグレーション)
+
+### マイグレーション（Alembic）
+
+**① 一言定義**: DB スキーマの変更を「実行可能なコード（up/down のペア）」として
+履歴管理する仕組み。Alembic はその Python 実装。
+
+**② なぜ必要か**: スキーマを手作業の SQL で変えると「誰かの環境だけテーブル定義が
+違う」状態になり、再現も巻き戻しもできない。特に**既にデータが入っている本番テーブル**の
+変更は、手順をコード化してステージングで試してからでないと事故になる（S4 で実演予定）。
+
+**③ 実例**: [backend/migrations/](../../backend/migrations/)。
+`uv run alembic revision --autogenerate` で生成し、**必ず目視レビューしてから**
+`uv run alembic upgrade head`。autogenerate は万能ではない（検出できない変更がある）
+ため「提案」として扱う。診断は `alembic current`（DB 側）と `alembic heads`（コード側）の
+見比べが基本 → [実験②](../02_sprint2/review.md#実験)
+
+### 依存性注入（Depends）
+
+**① 一言定義**: 関数が必要とする部品（DB セッション等）を、関数の中で作らず
+「外から渡してもらう」仕組み。FastAPI では引数の型宣言（`Depends`）で表現する。
+
+**② なぜ必要か**: ルータの中で直接 DB 接続を作ると、テスト時に本物の接続先に
+つながってしまい、差し替える手段がない。「開発 DB に対してテストを走らせて
+全データを消した」は実際に起きる事故。注入にしておけばテストで丸ごと差し替えられる。
+
+**③ 実例**: [backend/app/db.py](../../backend/app/db.py) の `get_session` と、
+[backend/tests/conftest.py](../../backend/tests/conftest.py) の
+`app.dependency_overrides[get_session]`（テスト用 DB への差し替え）
+→ [Step 2-4](dev-walkthrough.md#step-2-4-テスト用-db-基盤)
+
+### サービス名での名前解決
+
+**① 一言定義**: Docker Compose が、サービス名（`db` 等）をコンテナの IP に解決する
+内部 DNS を提供する仕組み。
+
+**② なぜ必要か**: コンテナの IP は起動のたびに変わりうるため、IP 直書きは壊れる。
+また「ホストから見た接続先（localhost:5433）」と「コンテナから見た接続先（db:5432）」は
+**別物**で、これを混同すると `could not translate host name` や connection refused に
+なる（接続エラー調査でまず確認すべき点）。
+
+**③ 実例**: [compose.yaml](../../compose.yaml) の `DB_HOST: db` と、
+[backend/app/config.py](../../backend/app/config.py) の既定値 `localhost:5433` の対比
+→ [Step 2-1](dev-walkthrough.md#step-2-1-db-接続基盤設定エンジンセッション依存)
+
+### 設定の環境変数駆動（pydantic-settings）
+
+**① 一言定義**: 接続先・認証情報などの「環境で変わる値」を、コードでなく
+環境変数・`.env` から読む方式。pydantic-settings は型つきでそれを行う。
+
+**② なぜ必要か**: DB パスワードをコードに直書きすると、公開リポジトリでは漏えい事故に
+なる。また環境ごと（開発/CI/本番）に値を変えるたびコードを書き換えるのは事故のもと。
+「コードは同じ・値だけ差し替え」が原則（Twelve-Factor App の考え方）。
+
+**③ 実例**: [backend/app/config.py](../../backend/app/config.py)。
+優先順位は「環境変数 > ルート .env > クラスの既定値」で、コンテナ内は compose が
+`DB_HOST=db` を注入して上書きする。
+
+### テスト用 DB とテストの独立性
+
+**① 一言定義**: テストは開発用と別の DB（todo_test）に対して行い、
+各テストの前後でテーブルを作り直して「他のテストの残骸」を持ち込まない方針。
+
+**② なぜ必要か**: 開発 DB でテストすると、テストの洗い替えで開発データが消える。
+またテストが順序に依存する（前のテストのデータ前提）と、1本だけ実行すると落ちる・
+並列化で落ちるなど、信頼できないテストになる。
+
+**③ 実例**: [backend/tests/conftest.py](../../backend/tests/conftest.py)
+（`todo_test` の自動作成・テストごとの create_all/drop_all・セッション差し替え）。
+SQLite で代用せず**実 Postgres**を使う理由は方言差の回避
+→ [Step 2-4](dev-walkthrough.md#step-2-4-テスト用-db-基盤)
+
+---
+
+（S3 以降の概念はスプリント終了ごとにここへ追記する）
