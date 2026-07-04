@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
 from sqlmodel import Session, col, select
 
@@ -50,3 +50,11 @@ def list_todos(
         page=page,
         per_page=per_page,
     )
+
+
+@router.get("/{todo_id}", response_model=TodoRead)
+def get_todo(todo_id: int, session: SessionDep) -> Todo:
+    todo = session.get(Todo, todo_id)
+    if todo is None:
+        raise HTTPException(status_code=404, detail="Todo not found")
+    return todo
