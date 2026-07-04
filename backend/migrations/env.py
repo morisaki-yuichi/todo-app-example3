@@ -7,6 +7,7 @@ from sqlmodel import SQLModel
 from alembic import context
 
 from app.config import settings
+import app.models  # noqa: F401  # モデルを import して SQLModel.metadata に登録させる
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
