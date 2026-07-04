@@ -298,4 +298,71 @@ title だけ null を拒否する field_validator は
 
 ---
 
-（S4 以降の概念はスプリント終了ごとにここへ追記する）
+## スプリント4で登場した概念
+
+### 認証と認可（401 vs 403）
+
+**① 一言定義**: 認証（authentication）は「あなたは誰か」の確認 = 失敗は **401**。
+認可（authorization）は「その人に権限があるか」の判定 = 拒否は **403**。
+
+**② なぜ必要か**: 混同すると「ログインさえすれば他人のデータも見える」API ができる。
+実際、認可チェックを1箇所書き忘れるだけで他人の TODO が丸ごと読める
+（実験⑤で実演。**書き忘れても何の警告も出ない**のが認可の怖さ）。
+IDOR（他人のリソース ID を直叩きする攻撃）は Web の脆弱性ランキング常連。
+
+**③ 実例**: 401 は [app/deps.py](../../backend/app/deps.py) の `get_current_user` に集約、
+403 は [app/routers/todos.py](../../backend/app/routers/todos.py) の `get_owned_todo`。
+「本人はできる／他人は 403」の**ペアテスト**は
+[tests/test_todos_authz.py](../../backend/tests/test_todos_authz.py)
+→ [Step 4-3](dev-walkthrough.md#step-4-3-認可の導入と既存データのマイグレーション山場)
+
+### パスワードハッシュ
+
+**① 一言定義**: パスワードを元に戻せない値に変換して保存する仕組み。
+bcrypt は「わざと遅い」ハッシュで、ソルト（ランダム値）を内蔵する。
+
+**② なぜ必要か**: 平文保存の DB が漏えいすると全ユーザーのパスワードがそのまま流出する
+（他サイトの使い回しまで芋づる式に）。高速なハッシュ（SHA-256 等）でも総当たりが現実的に
+なってしまうため、**わざと遅い** bcrypt を使う。ソルトがないと「同じパスワード = 同じハッシュ」
+になり、レインボーテーブル（事前計算表）で一括解読される。
+
+**③ 実例**: [app/security.py](../../backend/app/security.py)。
+「同じ入力でも毎回違うハッシュ」のテストは
+[tests/test_security.py](../../backend/tests/test_security.py)。
+当初案の passlib ではなく bcrypt を直接使う判断は [QAログ](qa-log.md) に記録。
+
+### cookie セッション
+
+**① 一言定義**: ログイン時にサーバがセッション（実体は DB の1行）を作り、
+その識別トークンだけを cookie でブラウザに渡す「ステートフル」な認証方式。
+
+**② なぜ必要か**: HTTP はステートレスで、リクエストごとに「誰か」を証明する必要がある。
+毎回パスワードを送るのは論外（漏えい面が増える）。セッション方式の強みは
+**サーバ側で行を消せば即時無効化できる**こと（盗まれた疑いのあるトークンを即殺せる）。
+cookie の属性も重要: `httpOnly`（XSS で JS から盗めない）、`SameSite=Lax`（他サイト起点の
+送信を制限 = CSRF の軽減）、本番では `Secure`（HTTPS のみ）。
+
+**③ 実例**: [app/models.py](../../backend/app/models.py) の `UserSession` と
+[app/routers/auth.py](../../backend/app/routers/auth.py) の `_start_session` / `logout`。
+S8 で JWT（ステートレス・即時失効が苦手）に移行して両者を対比する予定
+→ [Step 4-2](dev-walkthrough.md#step-4-2-認証-apiregister--login--logout--me)
+
+### 既存データのマイグレーション
+
+**① 一言定義**: スキーマ変更のうち、既に入っているデータの変換・埋め戻しを伴うもの。
+「① nullable で追加 → ② データを埋める → ③ 制約を締める」の3段階が定石。
+
+**② なぜ必要か**: 空のテーブルなら通る変更が、データが入った稼働中テーブルでは失敗する
+（NOT NULL 列の一発追加は NotNullViolation。実験④で実演）。本番でこれを踏むと
+デプロイが即失敗し、最悪はメンテ不能になる。autogenerate はデータのことを何も知らないため、
+**データ移行は必ず人間が書く**。
+
+**③ 実例**:
+[migrations/versions/2a3cf6848388_add_user_id_to_todos.py](../../backend/migrations/versions/2a3cf6848388_add_user_id_to_todos.py)
+（引き取りユーザー legacy@example.com への割り当てを含む3段階）。
+CI での up/down 往復検証は [.github/workflows/ci.yml](../../.github/workflows/ci.yml)
+→ [Step 4-3](dev-walkthrough.md#step-4-3-認可の導入と既存データのマイグレーション山場)
+
+---
+
+（第2部（S5 以降）の概念はスプリント終了ごとにここへ追記する）

@@ -37,5 +37,12 @@ jobs:
       - name: 依存関係をロックファイルから復元
         run: uv sync --locked
 
+      - name: マイグレーションの適用と巻き戻しを検証
+        # up → down → up の往復で「downgrade が書けていない/壊れている」も検出する
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+
       - name: テストを実行
         run: uv run pytest

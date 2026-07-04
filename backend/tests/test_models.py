@@ -2,12 +2,17 @@ from datetime import date
 
 from sqlmodel import Session, select
 
-from app.models import Todo
+from app.models import Todo, User
 
 
-def test_todo_roundtrip(session: Session) -> None:
+def test_todo_roundtrip(session: Session, user: User) -> None:
     """Todo を保存して読み戻せる（DB 接続とモデル定義の疎通確認）。"""
-    todo = Todo(title="牛乳を買う", description="低脂肪", due_date=date(2026, 7, 10))
+    todo = Todo(
+        title="牛乳を買う",
+        description="低脂肪",
+        due_date=date(2026, 7, 10),
+        user_id=user.id,
+    )
     session.add(todo)
     session.commit()
     session.refresh(todo)
