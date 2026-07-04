@@ -6,7 +6,7 @@ from sqlmodel import Session, col, select
 
 from app.db import get_session
 from app.models import Todo
-from app.schemas import TodoListResponse, TodoRead
+from app.schemas import TodoCreate, TodoListResponse, TodoRead
 
 router = APIRouter(prefix="/todos", tags=["todos"])
 
@@ -50,6 +50,16 @@ def list_todos(
         page=page,
         per_page=per_page,
     )
+
+
+@router.post("", response_model=TodoRead, status_code=201)
+def create_todo(data: TodoCreate, session: SessionDep) -> Todo:
+    # スキーマ → テーブルモデルへの詰め替え。検証済みの値だけが渡る
+    todo = Todo.model_validate(data)
+    session.add(todo)
+    session.commit()
+    session.refresh(todo)  # DB が採番した id 等を読み戻す
+    return todo
 
 
 @router.get("/{todo_id}", response_model=TodoRead)
