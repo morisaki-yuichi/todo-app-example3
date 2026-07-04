@@ -1,0 +1,13 @@
+# 環境変数（秘密情報を含むためコミットしない。雛形は .env.example を参照）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# エディタ・OS
+.vscode/
+.idea/
+.DS_Store

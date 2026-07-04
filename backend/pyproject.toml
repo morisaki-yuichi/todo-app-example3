@@ -1,0 +1,20 @@
+[project]
+name = "todo-backend"
+version = "0.1.0"
+description = "TODO アプリのバックエンド API（FastAPI）"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.139.0",
+    "uvicorn[standard]>=0.50.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.5.0",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# backend/ 直下を import パスに入れ、テストから `from app.main import app` できるようにする
+pythonpath = ["."]

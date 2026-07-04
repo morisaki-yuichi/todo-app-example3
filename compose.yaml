@@ -1,0 +1,27 @@
+services:
+  api:
+    build: ./backend
+    # ホスト側ポートだけを .env で変える。コンテナ内は常に 8000 で固定
+    ports:
+      - "${API_PORT:-8002}:8000"
+    volumes:
+      # ソースをマウントして --reload で変更を即反映（開発用）
+      - ./backend:/app
+      # イメージ内の仮想環境をホストの .venv で隠さないための匿名ボリューム
+      - /app/.venv
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  db:
+    image: postgres:17
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # 名前つきボリュームに永続化（コンテナを消してもデータが残る）
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:
