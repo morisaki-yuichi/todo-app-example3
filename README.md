@@ -21,10 +21,11 @@ CRUD 機能を持つマルチユーザー TODO アプリを、スクラム開発
 - [初期プロンプト（教材の要件定義）](docs/initial-prompt.md)
 - [プロダクトロードマップ](docs/00_project/roadmap.md)
 - [QAログ（仕様決定の記録）](docs/00_project/qa-log.md)
+- [ユーザーストーリー](docs/00_project/user-stories.md)
+- [プロダクトバックログ（DoD つき）](docs/00_project/product-backlog.md)
 
 ### 教材（開発に合わせて整備予定）
 
-- ユーザーストーリー / プロダクトバックログ
 - 開発トレースガイド（dev-walkthrough.md）
 - 概念解説集（concepts.md）
 - キャッチアップ集（catch-up.md）
