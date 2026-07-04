@@ -230,4 +230,72 @@ SQLite で代用せず**実 Postgres**を使う理由は方言差の回避
 
 ---
 
-（S3 以降の概念はスプリント終了ごとにここへ追記する）
+## スプリント3で登場した概念
+
+### Pydantic バリデーションと 422
+
+**① 一言定義**: リクエストの型・制約（必須・文字数・形式）をスキーマに宣言しておくと、
+違反時に FastAPI が **422 Unprocessable Entity** と構造化されたエラーを自動生成する仕組み。
+
+**② なぜ必要か**: 入力チェックを手書きすると、漏れた1箇所が事故になる
+（title 101 文字で DB エラー 500、最悪は不正入力がそのまま保存される）。
+宣言的に書けばチェック・エラー応答・`/docs` への制約表示が常に一致する。
+
+**③ 実例**: [backend/app/schemas.py](../../backend/app/schemas.py) の
+`TodoCreate`（`Field(min_length=1, max_length=100)`）。
+422 の `detail` の読み方は **loc（どこが）→ type（なぜ）→ msg（説明）→ input（受け取った値）**
+→ [実験③](../03_sprint3/review.md#実験)。
+ルータ関数は実行前に止まるので、DB には何も書かれない。
+
+### リクエスト / レスポンススキーマの分離
+
+**① 一言定義**: 「受け取る形（TodoCreate / TodoUpdate）」「見せる形（TodoRead)」
+「保存する形（Todo, table=True）」を別のクラスにする設計。
+
+**② なぜ必要か**: テーブルモデルで直接受けると、①クライアントが `id` や
+`created_at` を指定できてしまう（改ざんの入り口）、②**table=True の SQLModel は
+Pydantic バリデーションを実行しない**ため max_length 等が素通りする、という
+2つの事故が起きる。S4 で `user_id` を足すときも、受け口に無ければ
+「他人の所有者を指定して作る」攻撃は構造的に不可能になる。
+
+**③ 実例**: [backend/app/schemas.py](../../backend/app/schemas.py)（受ける形・見せる形）と
+[backend/app/models.py](../../backend/app/models.py)（保存する形）、
+詰め替えは [backend/app/routers/todos.py](../../backend/app/routers/todos.py) の
+`Todo.model_validate(data)`
+→ [Step 3-1](dev-walkthrough.md#step-3-1-todo-作成-api)
+
+### PATCH と部分更新
+
+**① 一言定義**: PATCH は「送られた項目だけを更新する」HTTP メソッド。
+PUT（全項目で置き換え）と違い、変更したい項目だけを送れる。
+
+**② なぜ必要か**: 全置換方式では、クライアントが最新の全項目を知らないと
+「送り忘れた項目が消える」事故が起きる（古い画面から保存したら説明欄が空になった、等）。
+部分更新では「**送らない = 変更しない**」と「**null を送る = 消す**」の区別が本質で、
+これを取り違えた実装（`exclude_unset` 漏れ）は未送信項目を null で潰す。
+
+**③ 実例**: [backend/app/routers/todos.py](../../backend/app/routers/todos.py) の
+`update_todo`（`model_dump(exclude_unset=True)` + `sqlmodel_update`）。
+title だけ null を拒否する field_validator は
+[backend/app/schemas.py](../../backend/app/schemas.py) の `TodoUpdate`
+→ [Step 3-2](dev-walkthrough.md#step-3-2-todo-編集-apipatch)
+
+### ステータスコード 201 / 204
+
+**① 一言定義**: 201 Created は「作成に成功し、作られたものを返す」。
+204 No Content は「成功したが、返す本文はない」。どちらも 200 の親戚だが意味が違う。
+
+**② なぜ必要か**: 何でも 200 で返す API は、クライアントが「作成されたのか・
+更新されたのか・本文を読むべきか」を本文の中身から推測することになり、
+自動処理（フロントの分岐・監視・リトライ判断）が壊れやすくなる。
+ステータスコードは機械が読む「結果の要約」。
+
+**③ 実例**: `POST /todos` は `status_code=201`、`DELETE /todos/{id}` は
+`status_code=204`（ハンドラは何も return しない）
+→ [backend/app/routers/todos.py](../../backend/app/routers/todos.py)。
+本リポジトリの使い分け一覧: 200（取得・更新）/ 201（作成）/ 204（削除）/
+401・403（S4 で登場）/ 404（無いもの）/ 422（入力不正）
+
+---
+
+（S4 以降の概念はスプリント終了ごとにここへ追記する）

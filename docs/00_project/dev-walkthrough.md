@@ -695,6 +695,174 @@ curl -s -w " [%{http_code}]" "http://localhost:8002/todos?per_page=101"      # [
 
 ---
 
+## スプリント3: Create / Update / Delete
+
+- 計画: [スプリント3 バックログ](../03_sprint3/backlog.md) /
+  記録: [レビュー](../03_sprint3/review.md)・[レトロスペクティブ](../03_sprint3/retrospective.md)
+- PR: [#3 スプリント3: Create / Update / Delete](https://github.com/morisaki-yuichi/todo-app-example3/pull/3)
+- このスプリントの概念: [Pydantic バリデーションと 422](concepts.md#pydantic-バリデーションと-422)・
+  [リクエスト / レスポンススキーマの分離](concepts.md#リクエスト--レスポンススキーマの分離)・
+  [PATCH と部分更新](concepts.md#patch-と部分更新)・
+  [ステータスコード 201 / 204](concepts.md#ステータスコード-201--204)
+
+### 全体の流れ
+
+```text
+Step 3-1  作成 API（POST・201）  … バリデーションの本丸。境界値テストつき
+Step 3-2  編集 API（PATCH・200） … 部分更新。「送らない」と「null」の区別
+Step 3-3  削除 API（DELETE・204）… 一番小さい。仕上げに手動一巡確認
+```
+
+重いタスク（作成 + バリデーション）を先頭に置いています（S2 レトロの Try T-4）。
+
+---
+
+### Step 3-1: TODO 作成 API
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/2b29c74) /
+  ローカル: `git show 2b29c74`
+
+**何を・なぜ**: `POST /todos`。成功時は **201 Created** と作成結果を返します。
+入力は `Todo`（table=True）で直接受けず、専用の `TodoCreate` スキーマで受けます。
+理由は2つ:
+
+1. クライアントに `id` や `created_at` を指定させない（受け口に無い項目は入りようがない）
+2. **table=True の SQLModel は Pydantic バリデーションを実行しない**という落とし穴がある。
+   `max_length` などの制約を効かせたいなら、非テーブルのスキーマで受けるのが正解
+   （→ [リクエスト / レスポンススキーマの分離](concepts.md#リクエスト--レスポンススキーマの分離)）
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `backend/app/schemas.py` | 既存ファイルを手で編集（`TodoCreate` を追加） |
+| `backend/app/routers/todos.py` | 既存ファイルを手で編集（`create_todo` を追加） |
+| `backend/tests/test_todos_create.py` | 手で新規作成 |
+
+**編集の順序と理由**: スキーマ（入力の形と制約）→ ルータ（詰め替えて保存）→ テスト。
+ルータ本体は4行（validate → add → commit → refresh）で、
+**制約はすべてスキーマ側に宣言として置く**のが FastAPI らしい書き方です。
+
+**動作確認**: `uv run pytest` → 21 passed。テストの観点は
+201 + 本文 / 永続化（作成後に GET できる）/ title だけの最小作成 / 過去日 due_date 許可 /
+title 欠落・空文字（422）/ **境界値**（title 100文字は通り 101 は落ちる、
+description 1000 / 1001）/ 日付形式不正。
+
+**わざと失敗を見る実験③: title を欠いた POST の 422 を読む**
+
+```bash
+curl -s -w "\n[%{http_code}]" -X POST http://localhost:8002/todos \
+  -H "Content-Type: application/json" \
+  -d '{"description": "タイトルを忘れた"}'
+```
+
+422 の `detail` は配列で、要素の読み方は
+**`loc`（どこが）→ `type`（なぜ）→ `msg`（人間向け説明）→ `input`（受け取った値）**。
+ルータ関数は実行すらされず、DB にも書き込まれません。
+詳細: [S3 レビュー記録の実験欄](../03_sprint3/review.md#実験)
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| 制約違反なのに 201 で通ってしまう | 受け口が table=True モデルになっている（バリデーションされない）。スキーマ分離を確認 |
+| `detail` の `loc` が `["body"]` だけ | JSON 全体が壊れている（クォート漏れ等）。`-d` の中身を JSON lint する |
+| curl で 422 だが `/docs` からは成功する | curl の `-H "Content-Type: application/json"` 漏れが典型 |
+
+**写経時の差異**: レスポンスの `id` / `created_at` は環境ごとに異なります。
+
+**ここでコミット**: `feat: TODO 作成 API を追加（201・バリデーション・境界値テスト）`
+
+---
+
+### Step 3-2: TODO 編集 API（PATCH）
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/05eb51c) /
+  ローカル: `git show 05eb51c`
+
+**何を・なぜ**: `PATCH /todos/{id}`。**送られた項目だけ**を更新します
+（→ [PATCH と部分更新](concepts.md#patch-と部分更新)）。核心は次の区別です。
+
+| クライアントの意図 | リクエスト | 実装での見え方 |
+|---|---|---|
+| この項目は変更しない | 項目を**送らない** | `exclude_unset=True` の dump に**含まれない** |
+| この項目を消す | `null` を送る | dump に `None` として**含まれる** |
+
+`description: null` は「説明を消す」として許可し、`title: null` は
+NOT NULL 制約を 500 で踏む前に **field_validator で 422** にします
+（バリデータは「項目が送られたときだけ」動くので、省略とは干渉しない）。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `backend/app/schemas.py` | 既存ファイルを手で編集（`TodoUpdate` を追加） |
+| `backend/app/routers/todos.py` | 既存ファイルを手で編集（`update_todo` を追加） |
+| `backend/tests/test_todos_update.py` | 手で新規作成 |
+
+**動作確認**: `uv run pytest` → 28 passed。テストの観点は
+部分更新（送っていない項目が変わらない）/ completed のトグル /
+description の null クリア / **title の null は 422** / 作成時と同じ制約 /
+updated_at が進む（created_at は不変）/ 404。
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| 送っていない項目が null で上書きされる | `model_dump()` に `exclude_unset=True` が無い（PATCH 実装の典型バグ） |
+| `title: null` が 500（IntegrityError） | field_validator 漏れ。DB の NOT NULL に到達する前に 422 で止める |
+| updated_at が変わらない | ルータでの明示更新漏れ（本構成では DB トリガーではなくアプリで更新する設計） |
+
+**ここでコミット**: `feat: TODO 編集 API を追加（PATCH 部分更新・null と未送信の区別）`
+
+---
+
+### Step 3-3: TODO 削除 API
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/684e6d6) /
+  ローカル: `git show 684e6d6`
+
+**何を・なぜ**: `DELETE /todos/{id}`。成功は **204 No Content**（本文なし）。
+存在しない ID・削除済み ID への再実行は 404 という素朴な仕様です。
+なお「削除前の確認」は UI の責務（S7 で実装）で、API は確認なしで消します。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `backend/app/routers/todos.py` | 既存ファイルを手で編集（`delete_todo` を追加） |
+| `backend/tests/test_todos_delete.py` | 手で新規作成 |
+
+**動作確認（手動一巡・コピペ可）**: 自動テスト（32 passed）に加え、
+curl でライフサイクルを一巡します。
+
+```bash
+B=http://localhost:8002
+# 作成 → 201。応答の id を控える（環境ごとに違う値になる）
+curl -s -w "\n[%{http_code}]" -X POST "$B/todos" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "curlで作成", "due_date": "2026-07-08"}'
+# 以降の <ID> は自分の応答の id に読み替える
+curl -s -w "\n[%{http_code}]" -X PATCH "$B/todos/<ID>" \
+  -H "Content-Type: application/json" -d '{"completed": true}'      # [200]
+curl -s -w "[%{http_code}]" -X DELETE "$B/todos/<ID>"               # [204]
+curl -s -w "\n[%{http_code}]" "$B/todos/<ID>"                       # [404]
+```
+
+`/docs` でも POST/PATCH/DELETE が増え、スキーマの必須/任意・文字数制約が
+反映されていることを確認してください。
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| 204 なのに本文が返る設定にしてしまい警告/エラー | 204 は「本文なし」の約束。ハンドラは何も return しない |
+| 削除後も一覧に残って見える | 別プロセス/別 DB を見ている可能性。接続先（ホスト vs コンテナ、todo vs todo_test）を確認 |
+
+**ここでコミット**: `feat: TODO 削除 API を追加（204・再取得 404）`
+
+---
+
 ## ユーザーストーリー × 実装コミット × PR の対応マップ
 
 | ストーリー / PBI | コミット | PR |
@@ -704,7 +872,10 @@ curl -s -w " [%{http_code}]" "http://localhost:8002/todos?per_page=101"      # [
 | PBI-03 DB 基盤 | a90f4f2, 127bcb8, d10ef76, dd99303, 7494359 | [#2](https://github.com/morisaki-yuichi/todo-app-example3/pull/2) |
 | US-04 一覧（API・認可は S4） | e0b220b, 773493b | [#2](https://github.com/morisaki-yuichi/todo-app-example3/pull/2) |
 | US-05 詳細（API・認可は S4） | ac77f15 | [#2](https://github.com/morisaki-yuichi/todo-app-example3/pull/2) |
-| US-01〜03, 06〜08 | （S3 以降で実装） | — |
+| US-03 作成（API・認可は S4） | 2b29c74 | [#3](https://github.com/morisaki-yuichi/todo-app-example3/pull/3) |
+| US-06 編集（API・認可は S4） | 05eb51c | [#3](https://github.com/morisaki-yuichi/todo-app-example3/pull/3) |
+| US-07 削除（API・認可は S4） | 684e6d6 | [#3](https://github.com/morisaki-yuichi/todo-app-example3/pull/3) |
+| US-01, 02, 08 | （S4 で実装） | — |
 
 ## コミットに残っていない出来事の一覧
 
@@ -718,3 +889,4 @@ curl -s -w " [%{http_code}]" "http://localhost:8002/todos?per_page=101"      # [
 | 実験②: upgrade 前の autogenerate → `Target database is not up to date.` | [S2 レビュー記録](../02_sprint2/review.md#実験) |
 | シードの `python scripts/seed.py` 直接実行 → ModuleNotFoundError（`-m` で解決） | [S2 レビュー記録](../02_sprint2/review.md#トラブル記録) |
 | 日本語クエリの未エンコード URL → uvicorn が 400 で拒否 | [S2 レビュー記録](../02_sprint2/review.md#トラブル記録) |
+| 実験③: title 欠落 POST → 422 の detail（loc/type/msg/input）の読み方 | [S3 レビュー記録](../03_sprint3/review.md#実験) |
