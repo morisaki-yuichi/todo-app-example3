@@ -83,4 +83,7 @@ curl -s -w "\n[%{http_code}]" "$B/todos/<ID>"
 
 ## マージ後の main での動作確認（マージ作業の一部）
 
-（マージ後にこの節へ結果を追記する）
+2026-07-05、PR #3 のマージコミットを pull した main 上で実施:
+
+- `POST /todos`（curl）→ 201 ✅
+- `uv run pytest` → 32 passed ✅
