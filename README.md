@@ -34,7 +34,17 @@ docker compose up -d --build
 cd backend
 uv sync                          # 初回のみ（ロックファイルから依存を復元）
 uv run alembic upgrade head      # テーブル作成（これを忘れると /todos が 500 になる）
-uv run python -m scripts.seed    # 開発用の TODO 15件を投入（任意）
+uv run python -m scripts.seed    # デモユーザー2人 + TODO 17件を投入（任意）
+```
+
+TODO API はログイン必須（未ログインは 401）。シードのデモユーザーでログインできます:
+
+```bash
+# alice でログインし、cookie を使って自分の TODO 一覧を取得
+curl -s -c /tmp/alice.jar -X POST http://localhost:8002/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "password": "password123"}'
+curl -s -b /tmp/alice.jar http://localhost:8002/todos
 ```
 
 テスト（テスト専用 DB `todo_test` を自動作成して実行される）:
@@ -72,3 +82,5 @@ uv run pytest
   （[レビュー](docs/02_sprint2/review.md) / [レトロ](docs/02_sprint2/retrospective.md)）
 - [スプリント3: Create / Update / Delete](docs/03_sprint3/backlog.md)
   （[レビュー](docs/03_sprint3/review.md) / [レトロ](docs/03_sprint3/retrospective.md)）
+- [スプリント4: 認証・認可 + CI 固め](docs/04_sprint4/backlog.md)
+  （[レビュー](docs/04_sprint4/review.md) / [レトロ](docs/04_sprint4/retrospective.md)）

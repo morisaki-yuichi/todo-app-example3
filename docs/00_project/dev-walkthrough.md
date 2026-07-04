@@ -863,6 +863,230 @@ curl -s -w "\n[%{http_code}]" "$B/todos/<ID>"                       # [404]
 
 ---
 
+## スプリント4: 認証・認可 + CI 固め（第1部 最終）
+
+- 計画: [スプリント4 バックログ](../04_sprint4/backlog.md) /
+  記録: [レビュー](../04_sprint4/review.md)・[レトロスペクティブ](../04_sprint4/retrospective.md)
+- PR: [#4 スプリント4: 認証・認可 + CI 固め](https://github.com/morisaki-yuichi/todo-app-example3/pull/4)
+- このスプリントの概念: [認証と認可（401 vs 403）](concepts.md#認証と認可401-vs-403)・
+  [パスワードハッシュ](concepts.md#パスワードハッシュ)・
+  [cookie セッション](concepts.md#cookie-セッション)・
+  [既存データのマイグレーション](concepts.md#既存データのマイグレーション)
+
+### 全体の流れ
+
+```text
+Step 4-1  User / UserSession モデル + bcrypt … 土台（テーブルとハッシュ）
+Step 4-2  認証 API                            … register / login / logout / me
+Step 4-3  認可 + データ移行                   … user_id 追加の3段階マイグレーション（山場）
+Step 4-4  CI 固め                             … マイグレーション往復検証
+```
+
+---
+
+### Step 4-1: User / UserSession モデルとパスワードハッシュ基盤
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/f627cd7) /
+  ローカル: `git show f627cd7`
+
+**何を・なぜ**: `users` と `sessions` の2テーブルと、bcrypt によるハッシュ関数を作ります。
+セッションを DB に置く「ステートフル」方式なのは、**ログアウト = 行削除で即時無効化できる**
+性質を体験するため（S8 で JWT と対比します）。
+
+> **ライブラリ選定の注記**: 当初案は passlib でしたが、長期未メンテで最新 bcrypt と
+> 組み合わせ問題があるため、bcrypt を直接使います（[QAログ](qa-log.md) に記録）。
+> 使う関数は hashpw / checkpw の2つだけで、学習内容は変わりません。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `backend/pyproject.toml` `uv.lock` | CLI で更新: `uv add bcrypt "pydantic[email]"` |
+| `backend/app/models.py` | 既存ファイルを手で編集（User / UserSession を追加。**Todo はまだ触らない**） |
+| `backend/app/security.py` | 手で新規作成 |
+| `backend/migrations/versions/xxxx_create_users_and_sessions_tables.py` | CLI で生成: `uv run alembic revision --autogenerate -m "create users and sessions tables"` → 目視レビュー → `upgrade head` |
+| `backend/tests/test_security.py` | 手で新規作成 |
+
+**編集の順序と理由**: モデル → マイグレーション → security → テスト。
+新規テーブルだけなので autogenerate の生成物がそのまま使えます
+（既存データが絡む Step 4-3 との対比ポイント）。
+
+**動作確認**: `uv run pytest tests/test_security.py` → 3 passed。
+テストの観点: ハッシュの往復 / **同じパスワードでも毎回違うハッシュ**（ソルト）/
+トークンの一意性。
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| `ImportError: email-validator is not installed` | `pydantic[email]` の追加漏れ。**コンテナ側**で出た場合は、新依存がコンテナの venv に未同期 → `docker compose restart api`（下記トラブル記録参照） |
+| クラス名 `Session` の衝突 | sqlmodel.Session と自作モデルの衝突。本リポジトリは `UserSession` と命名して回避 |
+
+**写経時の差異**: リビジョン ID は各自の環境で異なります。
+
+**ここでコミット**: `feat: User / UserSession モデルとパスワードハッシュ基盤を追加`
+
+---
+
+### Step 4-2: 認証 API（register / login / logout / me）
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/6061e10) /
+  ローカル: `git show 6061e10`
+
+**何を・なぜ**: `/auth` の4エンドポイント。設計の要点は3つ。
+
+1. **登録は 201 + 自動ログイン**（フロント実装（S6）で「登録 → 即一覧画面」にするため）
+2. **ログイン失敗は理由を教えない**: 「メール未登録」と「パスワード違い」を同一メッセージの
+   401 にする（区別すると登録済みメールを列挙できてしまう）
+3. **cookie は httpOnly + SameSite=Lax**: JS から読めない（XSS でトークンを盗めない）+
+   他サイト起点の送信を制限（CSRF の軽減）
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `backend/app/deps.py` | 手で新規作成（`SessionDep` を todos.py から移設、`get_current_user` / `CurrentUser` を追加） |
+| `backend/app/schemas.py` | 既存ファイルを手で編集（UserCreate / LoginRequest / UserRead） |
+| `backend/app/routers/auth.py` | 手で新規作成 |
+| `backend/app/main.py` | 既存ファイルを手で編集（include_router） |
+| `backend/tests/test_auth.py` | 手で新規作成 |
+
+**編集の順序と理由**: deps（認証の判定部品）→ スキーマ → ルータ → main → テスト。
+`get_current_user` を Depends にしておくと、次のステップで各エンドポイントに
+「引数を1つ足すだけ」で認証必須にできます。
+
+**動作確認**: `uv run pytest` → 44 passed。観点は 201 と自動ログイン /
+レスポンスに password_hash が**出ない** / 重複 409 / 不正メール・8文字未満 422（境界: 8文字は通る）/
+**失敗2種の応答が同一** / ログアウト後 me が 401。
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| テストで cookie が引き継がれない | TestClient はレスポンスの Set-Cookie を自動で保持する。カスタムでクライアントを作り直していないか確認 |
+| `/auth/me` が常に 401 | cookie 名の不一致（`SESSION_COOKIE_NAME` を1箇所に定数化して参照する） |
+| 401 なのにブラウザで cookie が見える | httpOnly は「JS から読めない」であって「開発者ツールに出ない」ではない（正常） |
+
+**ここでコミット**: `feat: 認証 API を追加（登録・ログイン・ログアウト・me、cookie セッション）`
+— この時点で todos はまだ無防備（次のステップで保護する）。
+
+---
+
+### Step 4-3: 認可の導入と既存データのマイグレーション（山場）
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/46f39ec) /
+  ローカル: `git show 46f39ec`
+
+**何を・なぜ**: `todos.user_id`（NOT NULL・外部キー）を追加し、全 TODO API を
+「ログイン必須（401）・自分の分だけ（403）」にします。
+**既にデータが入っているテーブルへの NOT NULL 列追加**が今スプリントの山場です。
+
+**影響調査（着手前に実施）**: `user_id` の追加は、モデル・全ルータ・
+**全テストファイル**・シードに波及する。特に「テストで Todo を直接 INSERT している箇所」は
+全部 user_id が必要になる（認可の導入はテスト全体に波及する、を体感する）。
+
+**わざと失敗を見る実験④: autogenerate をそのまま適用する**
+
+予想を書いてから、生成されたマイグレーション（`nullable=False` の一発追加）を
+そのまま `upgrade head` してみてください。
+
+```text
+NotNullViolation: column "user_id" of relation "todos" contains null values
+```
+
+既存17行の user_id を埋める手段がないため失敗します。DB は無傷です
+（PostgreSQL は DDL もトランザクションで巻き戻る）。
+→ 詳細: [S4 レビュー記録の実験欄](../04_sprint4/review.md#実験)
+
+**修正: 3段階マイグレーションに手で書き換える**
+
+```text
+① nullable=True で列を追加（既存行は NULL のまま入る）
+② データ移行: 引き取りユーザー legacy@example.com を作り、NULL の行に割り当てる
+③ 全行が埋まったので NOT NULL 化 + 外部キー + インデックス
+```
+
+あわせて autogenerate の生成物には **外部キー名が None（無名）** という問題もあり、
+そのままでは downgrade が実行できません。名前を明示します（`fk_todos_user_id_users`）。
+これも「autogenerate は提案」の実例です。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `backend/app/models.py` | 既存ファイルを手で編集（Todo に user_id） |
+| `backend/migrations/versions/xxxx_add_user_id_to_todos.py` | CLI で生成後、**大幅に手で編集**（上記3段階 + FK 命名） |
+| `backend/app/routers/todos.py` | 既存ファイルを手で編集（CurrentUser 追加・所有チェック `get_owned_todo`） |
+| `backend/tests/conftest.py` | 既存ファイルを手で編集（user / other_user / auth_client / other_client） |
+| `backend/tests/test_todos_*.py` `test_models.py` | 既存ファイルを手で編集（認証前提に更新） |
+| `backend/tests/test_todos_authz.py` | 手で新規作成（401 一式 + **ペアテスト**） |
+| `backend/scripts/seed.py` | 既存ファイルを手で編集（alice / bob の2ユーザー） |
+
+**編集の順序と理由**: モデル → マイグレーション（実験④込み）→ ルータ →
+conftest → 既存テスト更新 → ペアテスト → シード。
+スキーマが確定してからコードを直すと、テストの失敗が「認可の入れ忘れ」の検出器になります。
+
+**動作確認**:
+
+```bash
+uv run alembic upgrade head
+docker compose exec db psql -U todo -d todo \
+  -c "SELECT u.email, count(t.id) FROM todos t JOIN users u ON u.id=t.user_id GROUP BY u.email;"
+# => legacy@example.com | 17   （既存データが引き取られている）
+uv run alembic downgrade -1 && uv run alembic upgrade head   # 往復も検証
+uv run pytest    # 55 passed
+```
+
+**ペアテストの意味**: 認可は「本人はできる／他人は 403」を**必ずペアで**検証します。
+他人側だけだと「全員 403（機能停止）」でも通り、本人側だけだと「全員成功（認可なし）」でも
+通ってしまうからです。
+
+**わざと失敗を見る実験⑤: 認可チェックを外してみる**
+
+`get_owned_todo` の所有チェック2行をコメントアウトし、シードの bob で
+alice の TODO を直叩きしてください（curl 例はレビュー記録に）。
+200 で**丸ごと読めてしまう**こと、そして**ペアテストが4本落ちて検出する**ことを
+確認したら、元に戻します。認可は「書き忘れても何も警告が出ない」種類の欠陥です。
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| `NotNullViolation ... contains null values` | 既存データがあるテーブルへの NOT NULL 一発追加（実験④）。3段階に書き換える |
+| downgrade で `Constraint must have a name` | autogenerate が FK を無名（None）で生成した。名前を明示する |
+| 既存テストが大量に 401 で落ちる | 認可導入の想定どおりの波及。auth_client への置き換え漏れを潰す |
+| テストは通るのに手で叩くと他人の TODO が見える | テスト用 DB と開発用 DB の見間違い、または実験⑤の戻し忘れ。`git status` を確認 |
+
+**写経時の差異**: 既存 TODO の件数（legacy に引き取られる数）は各自の操作履歴で変わります。
+リビジョン ID・レコード ID も同様です。
+
+**ここでコミット**: `feat: TODO を所有者に紐付け認可を導入（既存データの移行つき）`
+— モデル・移行・認可・テスト・シードが「マルチユーザー化」という1つの意味で結合しているため、
+1コミットにまとめています（分けるとどの中間状態も壊れている）。
+
+---
+
+### Step 4-4: CI 固め（マイグレーション往復検証）
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/e1c9476) /
+  ローカル: `git show e1c9476`
+
+**何を・なぜ**: CI に `upgrade head → downgrade base → upgrade head` を追加します。
+Step 4-3 のような「手書きの重いマイグレーション」は、downgrade の壊れに気づきにくいため、
+PR ごとに往復を機械検証します。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `.github/workflows/ci.yml` | 既存ファイルを手で編集（ステップ追加） |
+
+**動作確認**: PR の CI で `マイグレーションの適用と巻き戻しを検証` ステップが緑になる。
+
+**ここでコミット**: `ci: マイグレーションの適用・巻き戻し検証を追加`
+
+---
+
 ## ユーザーストーリー × 実装コミット × PR の対応マップ
 
 | ストーリー / PBI | コミット | PR |
@@ -875,7 +1099,8 @@ curl -s -w "\n[%{http_code}]" "$B/todos/<ID>"                       # [404]
 | US-03 作成（API・認可は S4） | 2b29c74 | [#3](https://github.com/morisaki-yuichi/todo-app-example3/pull/3) |
 | US-06 編集（API・認可は S4） | 05eb51c | [#3](https://github.com/morisaki-yuichi/todo-app-example3/pull/3) |
 | US-07 削除（API・認可は S4） | 684e6d6 | [#3](https://github.com/morisaki-yuichi/todo-app-example3/pull/3) |
-| US-01, 02, 08 | （S4 で実装） | — |
+| US-01 登録 / US-02 ログイン（API編） | f627cd7, 6061e10 | [#4](https://github.com/morisaki-yuichi/todo-app-example3/pull/4) |
+| US-08 認可（API編） + US-03〜07 の 401/403 回収 | 46f39ec, e1c9476 | [#4](https://github.com/morisaki-yuichi/todo-app-example3/pull/4) |
 
 ## コミットに残っていない出来事の一覧
 
@@ -890,3 +1115,6 @@ curl -s -w "\n[%{http_code}]" "$B/todos/<ID>"                       # [404]
 | シードの `python scripts/seed.py` 直接実行 → ModuleNotFoundError（`-m` で解決） | [S2 レビュー記録](../02_sprint2/review.md#トラブル記録) |
 | 日本語クエリの未エンコード URL → uvicorn が 400 で拒否 | [S2 レビュー記録](../02_sprint2/review.md#トラブル記録) |
 | 実験③: title 欠落 POST → 422 の detail（loc/type/msg/input）の読み方 | [S3 レビュー記録](../03_sprint3/review.md#実験) |
+| 実験④: NOT NULL 列の一発追加 → NotNullViolation → 3段階移行に修正 | [S4 レビュー記録](../04_sprint4/review.md#実験) |
+| 実験⑤: 認可チェックを外す → 他人の TODO が 200 で漏える・ペアテストが検出 | [S4 レビュー記録](../04_sprint4/review.md#実験) |
+| コンテナ内 venv への新依存の未同期 → ImportError でリロード死 → restart で解決 | [S4 レビュー記録](../04_sprint4/review.md#トラブル記録) |
