@@ -5,8 +5,8 @@ from sqlalchemy import func, or_
 from sqlmodel import Session, col, select
 
 from app.db import get_session
-from app.models import Todo
-from app.schemas import TodoCreate, TodoListResponse, TodoRead
+from app.models import Todo, utcnow
+from app.schemas import TodoCreate, TodoListResponse, TodoRead, TodoUpdate
 
 router = APIRouter(prefix="/todos", tags=["todos"])
 
@@ -67,4 +67,21 @@ def get_todo(todo_id: int, session: SessionDep) -> Todo:
     todo = session.get(Todo, todo_id)
     if todo is None:
         raise HTTPException(status_code=404, detail="Todo not found")
+    return todo
+
+
+@router.patch("/{todo_id}", response_model=TodoRead)
+def update_todo(todo_id: int, data: TodoUpdate, session: SessionDep) -> Todo:
+    todo = session.get(Todo, todo_id)
+    if todo is None:
+        raise HTTPException(status_code=404, detail="Todo not found")
+
+    # exclude_unset: 「リクエストに含まれていた項目」だけを取り出す。
+    # これにより「送らない = 変更しない」「null を送る = 消す」を区別できる
+    updates = data.model_dump(exclude_unset=True)
+    todo.sqlmodel_update(updates)
+    todo.updated_at = utcnow()
+    session.add(todo)
+    session.commit()
+    session.refresh(todo)
     return todo
