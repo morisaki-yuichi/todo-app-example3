@@ -61,6 +61,11 @@
 
 ## マージ後の main での動作確認（マージ作業の一部）
 
-- `git checkout main && git pull` 後、`docker compose up -d --build` → `/health` が 200
-- `uv run pytest` → 1 passed
-- （結果はマージ後にこの節へ追記した）
+2026-07-05、マージコミット `37b15fe` を pull した main 上で実施:
+
+- `docker compose up -d --build` → `curl -s -w " [%{http_code}]" http://localhost:8002/health`
+  → `{"status":"ok"} [200]` ✅
+- `uv run pytest` → `1 passed` ✅
+
+（この節はマージ後に追記した。レビュー記録のうちマージに依存する項目は、
+マージ作業の完了をもって確定とする運用）
