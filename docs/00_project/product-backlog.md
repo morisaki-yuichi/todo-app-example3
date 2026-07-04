@@ -28,9 +28,9 @@
 | 3 | PBI-03 | DB 基盤: SQLModel モデル、Alembic マイグレーション、Postgres 接続、テスト用 DB | 基盤 | （US-03〜08 の前提） | S2 | 完了（PR #2） |
 | 4 | PBI-04 | TODO 一覧 API（ソート・絞り込み・ページネーション） | 機能 | US-04 | S2 | 完了（PR #2） |
 | 5 | PBI-05 | TODO 詳細 API | 機能 | US-05 | S2 | 完了（PR #2） |
-| 6 | PBI-06 | TODO 作成 API（バリデーション・境界値） | 機能 | US-03 | S3 | 未着手 |
-| 7 | PBI-07 | TODO 編集 API（PATCH 部分更新） | 機能 | US-06 | S3 | 未着手 |
-| 8 | PBI-08 | TODO 削除 API | 機能 | US-07 | S3 | 未着手 |
+| 6 | PBI-06 | TODO 作成 API（バリデーション・境界値） | 機能 | US-03 | S3 | 完了（PR #3） |
+| 7 | PBI-07 | TODO 編集 API（PATCH 部分更新） | 機能 | US-06 | S3 | 完了（PR #3） |
+| 8 | PBI-08 | TODO 削除 API | 機能 | US-07 | S3 | 完了（PR #3） |
 | 9 | PBI-09 | ユーザー登録・ログイン・ログアウト API（cookie セッション、bcrypt） | 機能 | US-01, US-02 | S4 | 未着手 |
 | 10 | PBI-10 | 認可: users テーブルと `user_id` を既存データのマイグレーションつきで追加し、「自分の TODO だけ」を強制（本人 / 他人のペアテスト） | 機能 | US-08 | S4 | 未着手 |
 
