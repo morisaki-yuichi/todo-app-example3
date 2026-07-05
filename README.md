@@ -95,3 +95,5 @@ npm test        # Vitest
   （[レビュー](docs/04_sprint4/review.md) / [レトロ](docs/04_sprint4/retrospective.md)）— 第1部完了（M1）
 - [スプリント5: React 環境構築](docs/05_sprint5/backlog.md)
   （[レビュー](docs/05_sprint5/review.md) / [レトロ](docs/05_sprint5/retrospective.md)）
+- [スプリント6: ログイン + TODO 一覧](docs/06_sprint6/backlog.md)
+  （[レビュー](docs/06_sprint6/review.md) / [レトロ](docs/06_sprint6/retrospective.md)）
