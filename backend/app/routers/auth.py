@@ -1,40 +1,23 @@
-from datetime import timedelta
-from typing import Annotated
-
-from fastapi import APIRouter, Cookie, HTTPException, Response
+from fastapi import APIRouter, HTTPException
 from sqlmodel import select
 
-from app.deps import SESSION_COOKIE_NAME, CurrentUser, SessionDep
-from app.models import User, UserSession, utcnow
-from app.schemas import LoginRequest, UserCreate, UserRead
-from app.security import generate_session_token, hash_password, verify_password
+from app.deps import CurrentUser, SessionDep
+from app.models import User
+from app.schemas import LoginRequest, TokenResponse, UserCreate, UserRead
+from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-SESSION_LIFETIME = timedelta(days=7)
 
-
-def _start_session(session: SessionDep, user: User, response: Response) -> None:
-    """セッション行を作り、トークンを httpOnly cookie で返す。"""
-    user_session = UserSession(
-        token=generate_session_token(),
-        user_id=user.id,
-        expires_at=utcnow() + SESSION_LIFETIME,
-    )
-    session.add(user_session)
-    session.commit()
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=user_session.token,
-        max_age=int(SESSION_LIFETIME.total_seconds()),
-        httponly=True,   # JavaScript から読めない（XSS でトークンを盗まれない）
-        samesite="lax",  # 他サイト起点の送信を制限（CSRF の軽減）
-        # secure=True は HTTPS 前提。本番では必須（開発は http なので付けない）
+def _token_response(user: User) -> TokenResponse:
+    return TokenResponse(
+        access_token=create_access_token(user.id),
+        user=UserRead.model_validate(user),
     )
 
 
-@router.post("/register", response_model=UserRead, status_code=201)
-def register(data: UserCreate, session: SessionDep, response: Response) -> User:
+@router.post("/register", response_model=TokenResponse, status_code=201)
+def register(data: UserCreate, session: SessionDep) -> TokenResponse:
     existing = session.exec(select(User).where(User.email == data.email)).first()
     if existing is not None:
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -44,40 +27,25 @@ def register(data: UserCreate, session: SessionDep, response: Response) -> User:
     session.commit()
     session.refresh(user)
 
-    _start_session(session, user, response)  # 登録後は自動ログイン
-    return user
+    # 登録後すぐ使えるよう、その場でトークンを発行する（自動ログイン相当）
+    return _token_response(user)
 
 
-@router.post("/login", response_model=UserRead)
-def login(data: LoginRequest, session: SessionDep, response: Response) -> User:
+@router.post("/login", response_model=TokenResponse)
+def login(data: LoginRequest, session: SessionDep) -> TokenResponse:
     user = session.exec(select(User).where(User.email == data.email)).first()
     # 「メール未登録」と「パスワード違い」を区別しない同一メッセージにする
     # （区別すると、攻撃者が登録済みメールアドレスを列挙できてしまう）
     if user is None or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
 
-    _start_session(session, user, response)
-    return user
+    return _token_response(user)
 
 
-@router.post("/logout", status_code=204)
-def logout(
-    session: SessionDep,
-    response: Response,
-    session_token: Annotated[str | None, Cookie(alias=SESSION_COOKIE_NAME)] = None,
-) -> None:
-    """サーバ側のセッション行を消し、cookie も破棄する。
-
-    行削除により、このトークンはその瞬間から全世界で無効になる
-    （＝ステートフル方式の強み。JWT ではこうはいかない。S8 で対比）。
-    未ログインで呼ばれても 204（何度呼んでも結果は同じ = 冪等）。
-    """
-    if session_token is not None:
-        user_session = session.get(UserSession, session_token)
-        if user_session is not None:
-            session.delete(user_session)
-            session.commit()
-    response.delete_cookie(SESSION_COOKIE_NAME)
+# logout エンドポイントは JWT 移行で廃止した。
+# JWT はサーバ側に「消すべき状態」がないため、ログアウトは
+# クライアントがトークンを破棄するだけになる（= 即時失効できないのが
+# JWT の本質的な限界。cookie セッション時代は行削除で即失効できた）。
 
 
 @router.get("/me", response_model=UserRead)

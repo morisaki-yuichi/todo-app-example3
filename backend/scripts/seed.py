@@ -16,7 +16,7 @@ from sqlalchemy import delete
 from sqlmodel import Session
 
 from app.db import engine
-from app.models import Todo, User, UserSession
+from app.models import Todo, User
 from app.security import hash_password
 
 BASE_TIME = datetime(2026, 7, 1, 9, 0, 0, tzinfo=timezone.utc)
@@ -66,9 +66,8 @@ def build_todos(seeds: list, user: User, base: datetime) -> list[Todo]:
 def main() -> None:
     demo_hash = hash_password(DEMO_PASSWORD)  # ハッシュ化は重いので1回だけ
     with Session(engine) as session:
-        # 外部キーの向きに合わせて子から消す（todos/sessions → users）
+        # 外部キーの向きに合わせて子から消す（todos → users）
         session.execute(delete(Todo))
-        session.execute(delete(UserSession))
         session.execute(delete(User))
 
         alice = User(email="alice@example.com", password_hash=demo_hash)

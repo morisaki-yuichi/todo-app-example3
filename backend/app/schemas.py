@@ -21,6 +21,16 @@ class UserRead(SQLModel):
     email: str
 
 
+class TokenResponse(SQLModel):
+    """ログイン・登録の応答。クライアントは access_token を保存し、
+    以降のリクエストの Authorization: Bearer ヘッダーに載せる。
+    """
+
+    access_token: str
+    token_type: str = "bearer"
+    user: UserRead
+
+
 class TodoCreate(SQLModel):
     """作成リクエスト用スキーマ。
 

@@ -1,5 +1,4 @@
 from collections.abc import Generator
-from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,10 +8,9 @@ from sqlmodel import Session, SQLModel, create_engine
 import app.models  # noqa: F401  # テーブル定義を SQLModel.metadata に登録させる
 from app.config import settings
 from app.db import get_session
-from app.deps import SESSION_COOKIE_NAME
 from app.main import app
-from app.models import User, UserSession, utcnow
-from app.security import generate_session_token
+from app.models import User
+from app.security import create_access_token
 
 # 開発用 DB（todo）を壊さないよう、テストは専用 DB（todo_test）に対して行う
 TEST_DB_NAME = f"{settings.postgres_db}_test"
@@ -76,15 +74,14 @@ def _make_user(session: Session, email: str) -> User:
 
 
 def login_as(client: TestClient, session: Session, user: User) -> None:
-    """セッション行を直接作って cookie をセットする（テスト用の高速ログイン）。"""
-    token = generate_session_token()
-    session.add(
-        UserSession(
-            token=token, user_id=user.id, expires_at=utcnow() + timedelta(days=1)
-        )
-    )
-    session.commit()
-    client.cookies.set(SESSION_COOKIE_NAME, token)
+    """JWT を直接発行してヘッダーに載せる（テスト用の高速ログイン）。
+
+    cookie セッション時代は DB にセッション行を作る必要があったが、
+    JWT はステートレスなので署名するだけでよい（session 引数は互換のため残置）。
+    """
+    del session  # 未使用（JWT に DB は不要になった）
+    token = create_access_token(user.id)
+    client.headers["Authorization"] = f"Bearer {token}"
 
 
 @pytest.fixture
