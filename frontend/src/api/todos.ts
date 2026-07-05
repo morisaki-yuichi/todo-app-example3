@@ -1,5 +1,5 @@
 import { apiRequest } from './client'
-import type { TodoListResponse } from './types'
+import type { Todo, TodoListResponse } from './types'
 
 export type TodoListParams = {
   page?: number
@@ -19,4 +19,44 @@ export function listTodos(params: TodoListParams = {}): Promise<TodoListResponse
 
   const query = search.toString()
   return apiRequest<TodoListResponse>(`/todos${query ? `?${query}` : ''}`)
+}
+
+/** 作成リクエストの形（backend の TodoCreate に対応） */
+export type TodoCreateInput = {
+  title: string
+  description?: string | null
+  due_date?: string | null
+}
+
+/** 部分更新の形（backend の TodoUpdate に対応）。
+ *  「キーを送らない = 変更しない」「null = 消す」の区別があるため、
+ *  変更したいキーだけを持つオブジェクトを渡すこと
+ */
+export type TodoUpdateInput = {
+  title?: string
+  description?: string | null
+  due_date?: string | null
+  completed?: boolean
+}
+
+export function getTodo(id: number): Promise<Todo> {
+  return apiRequest<Todo>(`/todos/${id}`)
+}
+
+export function createTodo(input: TodoCreateInput): Promise<Todo> {
+  return apiRequest<Todo>('/todos', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateTodo(id: number, input: TodoUpdateInput): Promise<Todo> {
+  return apiRequest<Todo>(`/todos/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+export function deleteTodo(id: number): Promise<void> {
+  return apiRequest<void>(`/todos/${id}`, { method: 'DELETE' })
 }
