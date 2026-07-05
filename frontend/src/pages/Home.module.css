@@ -1,0 +1,18 @@
+.loading {
+  color: #52606d;
+}
+
+.ok {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  background-color: #e3f9e5;
+  color: #207227;
+}
+
+.error {
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  background-color: #ffe3e3;
+  color: #ab091e;
+}
