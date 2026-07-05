@@ -60,7 +60,9 @@ uv run pytest
 cd frontend
 npm install     # 初回のみ（package-lock.json から復元）
 npm run dev     # http://localhost:5176 が開く（ポートは .env の FRONT_PORT）
-npm test        # Vitest
+npm test        # Vitest（単体テスト）
+npm run check   # lint + テスト + 型チェック込みビルド
+npm run e2e     # Playwright E2E（初回は npx playwright install chromium が必要）
 ```
 
 ## ドキュメント
@@ -73,13 +75,16 @@ npm test        # Vitest
 - [ユーザーストーリー](docs/00_project/user-stories.md)
 - [プロダクトバックログ（DoD つき）](docs/00_project/product-backlog.md)
 
-### 教材
+### 教材（読む順序のおすすめ）
 
-- [開発トレースガイド（dev-walkthrough.md）](docs/00_project/dev-walkthrough.md) —
-  コミット履歴を目次に、写経で追体験するためのガイド
-- [概念解説集（concepts.md）](docs/00_project/concepts.md) —
-  登場した概念を「定義 / なぜ必要か / このリポジトリでの実例」で整理
-- キャッチアップ集（catch-up.md）・演習編（exercises.md）は開発に合わせて整備予定
+1. [キャッチアップ集（catch-up.md）](docs/00_project/catch-up.md) —
+   他フレームワーク経験者向けの対応表 + クイズ（クローン前でも読める入口）
+2. [開発トレースガイド（dev-walkthrough.md）](docs/00_project/dev-walkthrough.md) —
+   コミット履歴を目次に、写経で追体験するためのガイド（本編）
+3. [概念解説集（concepts.md）](docs/00_project/concepts.md) —
+   登場した概念を「定義 / なぜ必要か / このリポジトリでの実例」で整理（辞書）
+4. [演習編（exercises.md）](docs/00_project/exercises.md) —
+   写経前ドリルと写経後の機能追加演習（出口）
 
 ### スプリント記録
 
@@ -104,3 +109,5 @@ npm test        # Vitest
   （[レビュー](docs/08_sprint8/review.md) / [レトロ](docs/08_sprint8/retrospective.md)）
 - [スプリント9: TanStack Query 導入](docs/09_sprint9/backlog.md)
   （[レビュー](docs/09_sprint9/review.md) / [レトロ](docs/09_sprint9/retrospective.md)）
+- [スプリント10: E2E + 教材最終化](docs/10_sprint10/backlog.md)
+  （[レビュー](docs/10_sprint10/review.md) / [レトロ](docs/10_sprint10/retrospective.md)）— 第2部完了（M2・全スプリント完走）
