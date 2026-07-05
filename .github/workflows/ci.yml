@@ -46,3 +46,28 @@ jobs:
 
       - name: テストを実行
         run: uv run pytest
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node.js をセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 依存関係をロックファイルから復元
+        # npm install ではなく ci: package-lock.json と完全一致で入れ、不一致なら失敗する
+        run: npm ci
+
+      - name: 型チェックとビルド
+        run: npm run build
+
+      - name: テストを実行
+        run: npm test
