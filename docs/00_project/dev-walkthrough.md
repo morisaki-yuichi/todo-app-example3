@@ -1626,6 +1626,211 @@ Step 7-5  一覧の完了トグル    … 更新 → 再取得（実験⑧）
 
 ---
 
+## スプリント8: JWT + CORS への移行
+
+- 計画: [スプリント8 バックログ](../08_sprint8/backlog.md) /
+  記録: [レビュー](../08_sprint8/review.md)・[レトロスペクティブ](../08_sprint8/retrospective.md)
+- PR: [#8 スプリント8: JWT + CORS への移行](https://github.com/morisaki-yuichi/todo-app-example3/pull/8)
+- このスプリントの概念: [JWT](concepts.md#jwt)・
+  [CORS とプリフライト](concepts.md#cors-とプリフライト)・
+  [cookie セッション vs JWT（CSRF と XSS）](concepts.md#cookie-セッション-vs-jwtcsrf-と-xss)
+
+### 全体の流れ
+
+```text
+Step 8-1  実験⑨ + JWT 基盤   … まず「壊れている状態」を観察してから道具を作る
+Step 8-2  認証の移行（API）   … cookie セッション → Bearer。sessions テーブル削除
+Step 8-3  CORS ミドルウェア   … 実験⑨の 405 が 200 + 許可ヘッダーになる
+Step 8-4  フロントの移行      … プロキシ廃止・localStorage・Authorization ヘッダー
+```
+
+**注意**: Step 8-2 完了から Step 8-4 完了までの間、フロントは動きません
+（バックエンドの認証方式が先に変わるため）。認証方式の移行のような横断変更では
+避けられない過渡状態で、「API → フロントの順で、各コミットはその層で完結」の
+原則で積んでいます。
+
+---
+
+### Step 8-1: 実験⑨と JWT 基盤
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/94c8d3f) /
+  ローカル: `git show 94c8d3f`（鍵長修正: `git show bd0ad5b`）
+
+**まず実験⑨（CORS 未設定の観察）**。実装前の main に対して、ブラウザが
+別オリジンから送るのと同じリクエストを curl で再現します。
+
+```bash
+# プリフライト（ブラウザが本リクエスト前に送る「お伺い」）
+curl -s -X OPTIONS http://localhost:8002/todos \
+  -H "Origin: http://localhost:5176" \
+  -H "Access-Control-Request-Method: GET" -w "\n[%{http_code}]"
+# => 405 Method Not Allowed（OPTIONS を受ける口がない）
+
+# 通常の GET に Origin を付けても、応答に Access-Control-Allow-Origin が無い
+curl -s -o /dev/null -D - http://localhost:8002/health \
+  -H "Origin: http://localhost:5176" | grep -i "access-control\|HTTP/"
+# => HTTP/1.1 200 OK（だけ）
+```
+
+**核心の観察**: サーバは 200 でデータを返しています。CORS のブロックは
+サーバではなく**ブラウザが**行う——許可ヘッダーの無い応答を JS に渡さないのです
+（→ [CORS とプリフライト](concepts.md#cors-とプリフライト)）。
+
+**JWT 基盤**:
+
+| ファイル | 作り方 |
+|---|---|
+| `backend/pyproject.toml` `uv.lock` | CLI で更新: `uv add pyjwt` |
+| `backend/app/config.py` | 既存ファイルを手で編集（secret_key / 有効期限 / frontend_origin） |
+| `backend/app/security.py` | 既存ファイルを手で編集（create_access_token / decode_access_token） |
+| `backend/tests/test_security.py` | 既存ファイルを手で編集（往復・期限切れ・改ざん・「鍵なしで読める」） |
+
+読みどころ: テスト `test_jwt_payload_is_readable_without_key`。
+**JWT は暗号化ではない**——中身は base64 で誰でも読めます。守っているのは
+「改ざんの検出」（署名）だけ。だからペイロードに秘密を入れてはいけない。
+
+**ハマりどころ（実際に踏んだ）**: 開発用の署名鍵を短くすると pyjwt が
+`InsecureKeyLengthWarning`（HS256 は32バイト以上必須・RFC 7518）を出します。
+警告は放置せず、既定鍵を32バイト以上にして解消しました。
+
+**ここでコミット**: `feat: JWT の発行・検証を追加（署名・期限・改ざん検出のテストつき）`
+
+---
+
+### Step 8-2: 認証の移行（cookie セッション → JWT）
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/0bce69e) /
+  ローカル: `git show 0bce69e`
+
+**何を・なぜ**: login / register が `{access_token, token_type, user}` を返すようになり、
+認証依存は `Authorization: Bearer <JWT>` の検証に変わります。
+**logout エンドポイントは廃止**——JWT はサーバ側に「消すべき状態」がないためです
+（= 即時失効できない。cookie セッション時代は行削除で即失効できた。最大の対比点）。
+不要になった sessions テーブルは削除マイグレーションで落とします。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `backend/app/schemas.py` | 既存ファイルを手で編集（TokenResponse） |
+| `backend/app/routers/auth.py` | 既存ファイルを手で編集（cookie 処理を全廃、トークン応答へ） |
+| `backend/app/deps.py` | 既存ファイルを手で編集（Cookie → Authorization ヘッダー検証） |
+| `backend/app/models.py` | 既存ファイルを手で編集（UserSession を削除） |
+| `backend/migrations/versions/xxxx_drop_sessions_table.py` | CLI で生成: `uv run alembic revision --autogenerate -m "drop sessions table"` → 目視レビュー → `upgrade head`（down/up の往復も検証） |
+| `backend/tests/conftest.py` | 既存ファイルを手で編集（login_as が **JWT を署名するだけ**に。DB 不要になるのがステートレスの体感） |
+| `backend/tests/test_auth.py` `test_todos_authz.py` | 既存ファイルを手で編集（トークン応答・改ざん/期限切れ 401） |
+| `backend/scripts/seed.py` | 既存ファイルを手で編集（UserSession の削除処理を除去） |
+
+**わざと失敗を見る実験⑩: トークンの改ざん・期限切れ**
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8002/auth/login -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","password":"password123"}' | grep -oP '(?<="access_token":")[^"]+')
+curl -s -o /dev/null -w "[%{http_code}]\n" http://localhost:8002/auth/me \
+  -H "Authorization: Bearer $TOKEN"                        # [200]
+curl -s -w "\n[%{http_code}]\n" http://localhost:8002/auth/me \
+  -H "Authorization: Bearer ${TOKEN%????}AAAA"             # [401] 署名4文字の改ざん
+```
+
+期限切れはテストで検証しています（`expires_in=timedelta(seconds=-1)` で
+過去に期限切れのトークンを作る）。→ [S8 レビュー記録](../08_sprint8/review.md#実験)
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| すべて 401 になる | Authorization ヘッダーの形式（`Bearer ` プレフィックス・空白1個）を確認。curl では `-H` の引用符も |
+| しばらくすると 401（さっきまで動いていた） | トークンの期限切れ（既定60分）。再ログインで復活するならこれ。フロントは 401 を「再ログインへの誘導」として扱う |
+| `InsecureKeyLengthWarning` | SECRET_KEY が32バイト未満（Step 8-1 参照） |
+
+**写経時の差異**: トークンの値・リビジョン ID は毎回異なります。
+コマンド例はシェル変数（`$TOKEN`）で受けて使い回してください。
+
+**ここでコミット**: `feat: 認証を cookie セッションから JWT（Bearer）に移行し sessions テーブルを削除`
+
+---
+
+### Step 8-3: CORS ミドルウェア
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/06579c2) /
+  ローカル: `git show 06579c2`
+
+**何を・なぜ**: FastAPI の CORSMiddleware で、許可するオリジン
+（`.env` の `FRONTEND_ORIGIN`）に「ブラウザへの許可証」を発行します。
+`allow_origins=["*"]` にしないのは、「どこのサイト上の JS からの利用を許すか」は
+明示管理すべき情報だからです。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `backend/app/main.py` | 既存ファイルを手で編集（add_middleware） |
+| `backend/tests/test_cors.py` | 手で新規作成（許可オリジンのプリフライト / 実応答 / 許可外） |
+| `.env.example` `.env` `compose.yaml` | 既存ファイルを手で編集（SECRET_KEY / FRONTEND_ORIGIN / VITE_API_URL） |
+
+**動作確認**: 実験⑨と同じコマンドが今度は成功します。
+
+```bash
+curl -s -X OPTIONS http://localhost:8002/todos -H "Origin: http://localhost:5176" \
+  -H "Access-Control-Request-Method: GET" -o /dev/null -D - | grep -i "HTTP/\|access-control"
+# => 200 + access-control-allow-origin: http://localhost:5176
+```
+
+テストの読みどころ: `test_unknown_origin_gets_no_allow_header`——許可外オリジンにも
+サーバは 200 を返すが、許可ヘッダーが無いのでブラウザが JS への受け渡しを拒む。
+「CORS はブラウザが守る」をテストの形で残しています。
+
+**ここでコミット**: `feat: CORS ミドルウェアを追加（許可オリジンは .env 駆動）`
+
+---
+
+### Step 8-4: フロントの移行（プロキシ廃止・Bearer 方式）
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/e3730c7) /
+  ローカル: `git show e3730c7`
+
+**何を・なぜ**: フロントの変更は4点。
+
+1. `src/api/token.ts`（新規）: トークンの保管。**localStorage を選んだ理由と
+   XSS リスク**はファイル冒頭のコメントと概念解説集に明記
+2. `src/api/client.ts`: `/api` プレフィックス → `VITE_API_URL` の絶対 URL。
+   Authorization ヘッダーを自動付与（**api 層に集約した設計（S6 Try T-10）の回収**——
+   画面側は1行も変えずに認証方式が切り替わる）
+3. `src/api/auth.ts` / `AuthContext`: 応答からトークンを保存。
+   **logout は同期関数**になった（トークンを捨てるだけ。サーバ呼び出しなし）
+4. `vite.config.ts`: proxy 削除・envDir をルートに（VITE_API_URL を読む）
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `frontend/src/api/token.ts` | 手で新規作成 |
+| `frontend/src/api/client.ts` `auth.ts` | 既存ファイルを手で編集 |
+| `frontend/src/auth/context.ts` `AuthContext.tsx` `src/App.tsx` | 既存ファイルを手で編集（logout の同期化ほか） |
+| `frontend/vite.config.ts` | 既存ファイルを手で編集（proxy 削除・envDir） |
+| `frontend/src/setupTests.ts` | 既存ファイルを手で編集（localStorage のメモリ実装固定。下記トラブル参照） |
+| `frontend/package.json` | CLI で更新: `npm pkg set scripts.check="npm run lint && npm test && npm run build"`（Try T-13） |
+
+**動作確認（ブラウザ）**: `npm run dev` を**再起動**してから、
+①ログイン → 一覧 → CRUD 一巡がプロキシなしで動く、
+②開発者ツールの Network タブでリクエスト先が `http://localhost:8002/...`
+（別オリジン）になっており、リクエストヘッダーに `Authorization: Bearer ...` がある、
+③Application タブ → Local Storage にトークンが見える（= JS から読める、が XSS リスクの意味）、
+④ログアウト → トークンが消え、/todos がログイン画面へ。
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| ブラウザのコンソールに `blocked by CORS policy: Response to preflight request doesn't pass access control check` | API 側の FRONTEND_ORIGIN とフロントの実オリジン（ポート含む）の不一致が典型。api コンテナの再起動漏れも疑う |
+| すべての API が 401 | localStorage にトークンが無い（ログインし直す）か、Authorization ヘッダーが付いていない（Network タブで実リクエストを見る） |
+| VITE_API_URL が反映されない | dev サーバの再起動漏れ（env は起動時に読む）。envDir がルートを指しているかも確認 |
+| テストで `localStorage.getItem is not a function` | Node の実験的 WebStorage が jsdom を覆い隠す環境がある。setupTests のメモリ実装固定を確認（下記トラブル記録） |
+
+**ここでコミット**: `feat: フロントを別オリジン + Bearer トークン方式に移行（プロキシ廃止）`
+
+---
+
 ## ユーザーストーリー × 実装コミット × PR の対応マップ
 
 | ストーリー / PBI | コミット | PR |
@@ -1647,6 +1852,7 @@ Step 7-5  一覧の完了トグル    … 更新 → 再取得（実験⑧）
 | US-03 作成（フロント編） | 2b5e526 | [#7](https://github.com/morisaki-yuichi/todo-app-example3/pull/7) |
 | US-06 編集・完了切替（フロント編） | a39a488, b341f96 | [#7](https://github.com/morisaki-yuichi/todo-app-example3/pull/7) |
 | US-07 削除・確認ステップ（フロント編） | 4d4cfb8 | [#7](https://github.com/morisaki-yuichi/todo-app-example3/pull/7) |
+| PBI-16 JWT + CORS 移行（US-02 の方式変更） | 94c8d3f, bd0ad5b, 0bce69e, 06579c2, e3730c7 | [#8](https://github.com/morisaki-yuichi/todo-app-example3/pull/8) |
 
 ## コミットに残っていない出来事の一覧
 
@@ -1670,3 +1876,7 @@ Step 7-5  一覧の完了トグル    … 更新 → 再取得（実験⑧）
 | RTL の cleanup 漏れで「Found multiple elements」 | [S6 レビュー記録](../06_sprint6/review.md#トラブル記録) |
 | 実験⑧: key を外す → 実行時警告は観測できず、lint（jsx-key）が検出 | [S7 レビュー記録](../07_sprint7/review.md#実験) |
 | Link 追加で既存一覧テストが4本失敗（Router ラッパー不足）→ 修正 | [S7 レビュー記録](../07_sprint7/review.md#トラブル記録) |
+| 実験⑨: CORS 未設定 → プリフライト 405・許可ヘッダーなし（ブラウザが守る） | [S8 レビュー記録](../08_sprint8/review.md#実験) |
+| 実験⑩: JWT の改ざん・期限切れ → 401 | [S8 レビュー記録](../08_sprint8/review.md#実験) |
+| pyjwt の InsecureKeyLengthWarning（鍵は32バイト以上） | [S8 レビュー記録](../08_sprint8/review.md#トラブル記録) |
+| Node の実験的 WebStorage が jsdom の localStorage を覆い隠す | [S8 レビュー記録](../08_sprint8/review.md#トラブル記録) |
