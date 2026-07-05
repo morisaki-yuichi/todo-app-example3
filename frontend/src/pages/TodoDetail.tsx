@@ -1,90 +1,85 @@
-import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { deleteTodo, getTodo, updateTodo } from '../api/todos'
 import type { Todo } from '../api/types'
 import styles from './TodoDetail.module.css'
 
-type DetailState =
-  | { status: 'loading' }
-  | { status: 'success'; todo: Todo }
-  | { status: 'not-found' }
-  | { status: 'error'; message: string }
-
 export function TodoDetail() {
   // URL の :id 部分。useParams が返すのは常に文字列なので数値化する
   const { id } = useParams()
   const todoId = Number(id)
   const navigate = useNavigate()
-  const [state, setState] = useState<DetailState>({ status: 'loading' })
+  const queryClient = useQueryClient()
 
-  useEffect(() => {
-    let cancelled = false
-    setState({ status: 'loading' })
-    getTodo(todoId)
-      .then((todo) => {
-        if (!cancelled) setState({ status: 'success', todo })
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        if (err instanceof ApiError && err.status === 404) {
-          setState({ status: 'not-found' })
-        } else {
-          setState({ status: 'error', message: String(err) })
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [todoId])
+  const todoQuery = useQuery({
+    queryKey: ['todo', todoId],
+    queryFn: () => getTodo(todoId),
+  })
 
-  const handleToggle = async (todo: Todo) => {
-    try {
-      const updated = await updateTodo(todo.id, { completed: !todo.completed })
-      setState({ status: 'success', todo: updated })
-    } catch {
+  const toggleMutation = useMutation({
+    mutationFn: (todo: Todo) =>
+      updateTodo(todo.id, { completed: !todo.completed }),
+    onSuccess: (updated) => {
+      // 詳細のキャッシュは応答で直接更新し（再取得1回分の節約）、
+      // 一覧のキャッシュは無効化して次に見るとき取り直させる
+      queryClient.setQueryData(['todo', todoId], updated)
+      queryClient.invalidateQueries({ queryKey: ['todos'] })
+    },
+    onError: () => {
       window.alert('完了状態の更新に失敗しました')
-    }
-  }
+    },
+  })
 
-  const handleDelete = async (todo: Todo) => {
+  const deleteMutation = useMutation({
+    mutationFn: (todo: Todo) => deleteTodo(todo.id),
+    onSuccess: () => {
+      // 消えたものの詳細キャッシュは無効化でなく削除する（取り直しても 404 なので）
+      queryClient.removeQueries({ queryKey: ['todo', todoId] })
+      queryClient.invalidateQueries({ queryKey: ['todos'] })
+      navigate('/todos')
+    },
+    onError: () => {
+      window.alert('削除に失敗しました')
+    },
+  })
+
+  const handleDelete = (todo: Todo) => {
     // 誤操作防止の確認ステップ。キャンセルなら何もしない
     if (
       !window.confirm(`「${todo.title}」を削除しますか？この操作は取り消せません`)
     ) {
       return
     }
-    try {
-      await deleteTodo(todo.id)
-      navigate('/todos')
-    } catch {
-      window.alert('削除に失敗しました')
-    }
+    deleteMutation.mutate(todo)
   }
 
-  if (state.status === 'loading') {
+  if (todoQuery.isPending) {
     return <p>読み込み中…</p>
   }
-  if (state.status === 'not-found') {
-    return (
-      <section>
-        <h1>TODO が見つかりません</h1>
-        <p>
-          削除済みか、URL が誤っている可能性があります。
-          <Link to="/todos">一覧へ戻る</Link>
-        </p>
-      </section>
-    )
-  }
-  if (state.status === 'error') {
+  if (todoQuery.isError) {
+    if (
+      todoQuery.error instanceof ApiError &&
+      todoQuery.error.status === 404
+    ) {
+      return (
+        <section>
+          <h1>TODO が見つかりません</h1>
+          <p>
+            削除済みか、URL が誤っている可能性があります。
+            <Link to="/todos">一覧へ戻る</Link>
+          </p>
+        </section>
+      )
+    }
     return (
       <p role="alert" className={styles.error}>
-        詳細を取得できませんでした（{state.message}）
+        詳細を取得できませんでした（{String(todoQuery.error)}）
       </p>
     )
   }
 
-  const { todo } = state
+  const todo = todoQuery.data
   return (
     <section>
       <p>
@@ -106,7 +101,11 @@ export function TodoDetail() {
         <dd>{new Date(todo.updated_at).toLocaleString()}</dd>
       </dl>
       <div className={styles.actions}>
-        <button type="button" onClick={() => handleToggle(todo)}>
+        <button
+          type="button"
+          onClick={() => toggleMutation.mutate(todo)}
+          disabled={toggleMutation.isPending}
+        >
           {todo.completed ? '未完了に戻す' : '完了にする'}
         </button>
         <Link to={`/todos/${todo.id}/edit`} className={styles.editLink}>
@@ -115,6 +114,7 @@ export function TodoDetail() {
         <button
           type="button"
           onClick={() => handleDelete(todo)}
+          disabled={deleteMutation.isPending}
           className={styles.deleteButton}
         >
           削除

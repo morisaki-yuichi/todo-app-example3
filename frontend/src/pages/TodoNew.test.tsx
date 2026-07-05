@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { Route, Routes } from 'react-router'
+import { renderWithProviders } from '../test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
 import * as todosApi from '../api/todos'
@@ -12,13 +13,12 @@ vi.mock('../api/todos')
 const mockedApi = vi.mocked(todosApi)
 
 function renderNew() {
-  render(
-    <MemoryRouter initialEntries={['/todos/new']}>
-      <Routes>
-        <Route path="/todos/new" element={<TodoNew />} />
-        <Route path="/todos/:id" element={<p>詳細ページ（スタブ）</p>} />
-      </Routes>
-    </MemoryRouter>,
+  renderWithProviders(
+    <Routes>
+      <Route path="/todos/new" element={<TodoNew />} />
+      <Route path="/todos/:id" element={<p>詳細ページ（スタブ）</p>} />
+    </Routes>,
+    { initialEntries: ['/todos/new'] },
   )
 }
 

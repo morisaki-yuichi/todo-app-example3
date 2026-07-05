@@ -1,59 +1,53 @@
-import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { getTodo, updateTodo } from '../api/todos'
-import type { Todo } from '../api/types'
+import type { TodoUpdateInput } from '../api/todos'
 import { TodoForm } from '../components/TodoForm'
-
-type EditState =
-  | { status: 'loading' }
-  | { status: 'success'; todo: Todo }
-  | { status: 'not-found' }
-  | { status: 'error'; message: string }
 
 export function TodoEdit() {
   const { id } = useParams()
   const todoId = Number(id)
   const navigate = useNavigate()
-  const [state, setState] = useState<EditState>({ status: 'loading' })
+  const queryClient = useQueryClient()
 
-  useEffect(() => {
-    let cancelled = false
-    getTodo(todoId)
-      .then((todo) => {
-        if (!cancelled) setState({ status: 'success', todo })
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        if (err instanceof ApiError && err.status === 404) {
-          setState({ status: 'not-found' })
-        } else {
-          setState({ status: 'error', message: String(err) })
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [todoId])
+  const todoQuery = useQuery({
+    queryKey: ['todo', todoId],
+    queryFn: () => getTodo(todoId),
+  })
 
-  if (state.status === 'loading') {
+  const updateMutation = useMutation({
+    mutationFn: (values: TodoUpdateInput) => updateTodo(todoId, values),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['todo', todoId], updated)
+      queryClient.invalidateQueries({ queryKey: ['todos'] })
+      navigate(`/todos/${todoId}`)
+    },
+  })
+
+  if (todoQuery.isPending) {
     return <p>読み込み中…</p>
   }
-  if (state.status === 'not-found') {
+  if (todoQuery.isError) {
+    if (
+      todoQuery.error instanceof ApiError &&
+      todoQuery.error.status === 404
+    ) {
+      return (
+        <section>
+          <h1>TODO が見つかりません</h1>
+          <p>
+            <Link to="/todos">一覧へ戻る</Link>
+          </p>
+        </section>
+      )
+    }
     return (
-      <section>
-        <h1>TODO が見つかりません</h1>
-        <p>
-          <Link to="/todos">一覧へ戻る</Link>
-        </p>
-      </section>
+      <p role="alert">編集対象を取得できませんでした（{String(todoQuery.error)}）</p>
     )
   }
-  if (state.status === 'error') {
-    return <p role="alert">編集対象を取得できませんでした（{state.message}）</p>
-  }
 
-  const { todo } = state
+  const todo = todoQuery.data
   return (
     <section>
       <p>
@@ -68,8 +62,7 @@ export function TodoEdit() {
         }}
         submitLabel="保存する"
         onSubmit={async (values) => {
-          await updateTodo(todo.id, values)
-          navigate(`/todos/${todo.id}`)
+          await updateMutation.mutateAsync(values)
         }}
       />
     </section>

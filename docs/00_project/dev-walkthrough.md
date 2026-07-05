@@ -1831,6 +1831,129 @@ curl -s -X OPTIONS http://localhost:8002/todos -H "Origin: http://localhost:5176
 
 ---
 
+## スプリント9: TanStack Query 導入
+
+- 計画: [スプリント9 バックログ](../09_sprint9/backlog.md) /
+  記録: [レビュー](../09_sprint9/review.md)・[レトロスペクティブ](../09_sprint9/retrospective.md)
+- PR: [#9 スプリント9: TanStack Query 導入](https://github.com/morisaki-yuichi/todo-app-example3/pull/9)
+- このスプリントの概念: [サーバ状態とキャッシュ（TanStack Query）](concepts.md#サーバ状態とキャッシュtanstack-query)・
+  [queryKey と無効化](concepts.md#querykey-と無効化)
+
+### 全体の流れ
+
+```text
+Step 9-1  基盤 + 一覧の移行   … QueryClientProvider・useQuery・useMutation（実験⑪）
+Step 9-2  詳細の移行          … setQueryData と removeQueries の使い分け
+Step 9-3  作成・編集の移行    … mutateAsync で 422 経路を維持
+```
+
+**移行の方針（S8 レトロ Try T-15 の適用）**: 画面単位で置き換え、
+**各コミットでアプリ全体が動く状態を保つ**。TanStack Query と素の fetch は
+同居できるため、S8 のような「壊れる区間」は発生しない。
+Home はあえて素の fetch のまま残し、対比サンプルとして保存する。
+
+### 移行で「消えた」もの（このスプリントの主旨）
+
+| 手書きしていたもの（S6〜S7） | 置き換わった先 |
+|---|---|
+| 3状態の型（ListState 等）と setState の分岐 | `isPending` / `isError` / `data` |
+| useEffect + 依存配列 | `queryKey`（条件が変われば別の住所 = 取り直し） |
+| cancelled フラグ（StrictMode 対応） | ライブラリが管理 |
+| reloadKey カウンタ（更新後の再取得） | `invalidateQueries` |
+| （なかった機能）画面に戻ったとき即表示 | キャッシュがあるので一瞬で表示 + 裏で再取得 |
+| （なかった機能）ページ移動のちらつき | `placeholderData: keepPreviousData` |
+
+---
+
+### Step 9-1: 基盤導入と一覧画面の移行
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/e57a064) /
+  ローカル: `git show e57a064`
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `frontend/package.json` ほか | CLI で更新: `npm install @tanstack/react-query` |
+| `frontend/src/main.tsx` | 既存ファイルを手で編集（QueryClientProvider。retry: false の理由はコメント参照） |
+| `frontend/src/pages/Todos.tsx` | 既存ファイルを手で編集（**全面書き換え**。差分を読むのが最良の教材） |
+| `frontend/src/test-utils.tsx` | 手で新規作成（Router + QueryClient のテスト用ラッパー） |
+| `frontend/src/pages/Todos.test.tsx` | 既存ファイルを手で編集（ラッパー変更・waitFor 追加） |
+
+読みどころ（差分で見る）:
+
+- `queryKey: ['todos', listParams]` —— S6 実験⑦で学んだ「依存配列の書き漏らし」
+  問題が、「パラメータをキーに含め忘れる」問題に形を変える。ただしキーは
+  queryFn のすぐ隣に書くので漏れに気づきやすい
+- テストは**振る舞い不変**を確認する形になった（同じテストが通る =
+  リファクタリングの安全網が機能した）。非同期の再取得だけ `waitFor` で待つ
+
+**わざと失敗を見る実験⑪: invalidateQueries を外す**
+
+トグルの `onSuccess` から `invalidateQueries` をコメントアウトしてみてください
+（予想を先に書くこと）。PATCH は成功する（サーバは更新済み）のに、
+**一覧は古いキャッシュのまま何も変わりません**。エラーも警告も出ない——
+「キャッシュを持つ」ことの代償は「古くなったと宣言する責任」です。
+検出網はトグルのテスト（「一覧を取り直す」）が担います。
+なお実ブラウザでは `refetchOnWindowFocus`（既定 on）が、ウィンドウを
+切り替えて戻った拍子に取り直すため「たまに直る」不可解なバグに見えます。
+→ [S9 レビュー記録](../09_sprint9/review.md#実験)
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| `No QueryClient set, use QueryClientProvider to set one` | Provider の包み忘れ（main.tsx / テストのラッパー） |
+| 更新したのに画面が変わらない | invalidateQueries の漏れ（実験⑪）か、queryKey の不一致（`['todos']` と `['todo', id]` は別の住所） |
+| 検索条件を変えても取り直さない | queryKey にそのパラメータが入っていない（依存配列漏れの Query 版） |
+
+**ここでコミット**: `feat: TanStack Query を導入し一覧画面を移行（useQuery・invalidateQueries）`
+
+---
+
+### Step 9-2: 詳細画面の移行
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/16da5da) /
+  ローカル: `git show 16da5da`
+
+読みどころは**キャッシュ操作の3つの使い分け**:
+
+- トグル成功時: `setQueryData(['todo', id], updated)` ——
+  PATCH の応答に最新の Todo が入っているので、**再取得せずキャッシュを直接更新**
+  （1リクエスト節約）。一覧側は `invalidateQueries` で「次に見るとき取り直し」
+- 削除成功時: `removeQueries(['todo', id])` —— 取り直しても 404 になるものは
+  無効化でなく**削除**
+- 404 の扱い: `todoQuery.error` が `ApiError` の 404 なら専用画面
+  （S7 の not-found 状態と同じ見た目を、error 経由で実現）
+
+**ここでコミット**: `feat: 詳細画面を useQuery / useMutation に移行（キャッシュ直接更新と無効化）`
+
+---
+
+### Step 9-3: 作成・編集画面の移行
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/eccb465) /
+  ローカル: `git show eccb465`
+
+読みどころ:
+
+- `mutateAsync` を使う理由: 失敗時に**例外を投げ直す**ので、TodoForm の
+  422 フィールド表示（ApiError の捕捉、S7）が変更なしで機能し続ける
+  （`mutate` は例外を投げず onError に流すため、フォームの経路が切れる）
+- **ハマりどころ（実際に踏んだ）**: `mutationFn: createTodo` と直接渡すと、
+  ライブラリが第2引数（コンテキスト）も渡すため、テストのモック検証が
+  「余分な引数」で落ちた。`(values) => createTodo(values)` と包んで
+  「値だけを渡す」契約を明示する
+
+**動作確認（ブラウザ）**: CRUD 一巡が S7 と同じに動くこと（振る舞い不変）に加え、
+**一覧 → 詳細 → 一覧と戻ったとき、一覧が一瞬で表示される**（キャッシュ）ことと、
+Network タブで裏の再取得（stale-while-revalidate）が走ることを見てください。
+「素の fetch 時代には毎回ローディングだった」との違いが体感できます。
+
+**ここでコミット**: `feat: 作成・編集画面を useMutation に移行（mutateAsync で 422 経路を維持）`
+
+---
+
 ## ユーザーストーリー × 実装コミット × PR の対応マップ
 
 | ストーリー / PBI | コミット | PR |
@@ -1853,6 +1976,7 @@ curl -s -X OPTIONS http://localhost:8002/todos -H "Origin: http://localhost:5176
 | US-06 編集・完了切替（フロント編） | a39a488, b341f96 | [#7](https://github.com/morisaki-yuichi/todo-app-example3/pull/7) |
 | US-07 削除・確認ステップ（フロント編） | 4d4cfb8 | [#7](https://github.com/morisaki-yuichi/todo-app-example3/pull/7) |
 | PBI-16 JWT + CORS 移行（US-02 の方式変更） | 94c8d3f, bd0ad5b, 0bce69e, 06579c2, e3730c7 | [#8](https://github.com/morisaki-yuichi/todo-app-example3/pull/8) |
+| PBI-17 TanStack Query 移行（US-04 ほかの方式変更） | e57a064, 16da5da, eccb465 | [#9](https://github.com/morisaki-yuichi/todo-app-example3/pull/9) |
 
 ## コミットに残っていない出来事の一覧
 
@@ -1880,3 +2004,5 @@ curl -s -X OPTIONS http://localhost:8002/todos -H "Origin: http://localhost:5176
 | 実験⑩: JWT の改ざん・期限切れ → 401 | [S8 レビュー記録](../08_sprint8/review.md#実験) |
 | pyjwt の InsecureKeyLengthWarning（鍵は32バイト以上） | [S8 レビュー記録](../08_sprint8/review.md#トラブル記録) |
 | Node の実験的 WebStorage が jsdom の localStorage を覆い隠す | [S8 レビュー記録](../08_sprint8/review.md#トラブル記録) |
+| 実験⑪: invalidateQueries を外す → 更新が画面に出ない（キャッシュの代償） | [S9 レビュー記録](../09_sprint9/review.md#実験) |
+| mutationFn に直接 api 関数を渡すと第2引数（コンテキスト）が混入 | [S9 レビュー記録](../09_sprint9/review.md#トラブル記録) |

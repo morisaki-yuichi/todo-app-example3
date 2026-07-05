@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { Route, Routes } from 'react-router'
+import { renderWithProviders } from '../test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as todosApi from '../api/todos'
 import type { Todo } from '../api/types'
@@ -21,13 +22,12 @@ const TODO: Todo = {
 }
 
 function renderEdit() {
-  render(
-    <MemoryRouter initialEntries={['/todos/5/edit']}>
-      <Routes>
-        <Route path="/todos/:id/edit" element={<TodoEdit />} />
-        <Route path="/todos/:id" element={<p>詳細ページ（スタブ）</p>} />
-      </Routes>
-    </MemoryRouter>,
+  renderWithProviders(
+    <Routes>
+      <Route path="/todos/:id/edit" element={<TodoEdit />} />
+      <Route path="/todos/:id" element={<p>詳細ページ（スタブ）</p>} />
+    </Routes>,
+    { initialEntries: ['/todos/5/edit'] },
   )
 }
 
