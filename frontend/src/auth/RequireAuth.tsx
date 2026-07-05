@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router'
-import { useAuth } from './AuthContext'
+import { useAuth } from './useAuth'
 
 /** ログイン必須ページのガード。未ログインなら /login へ飛ばす。
  *  元いた場所を state で渡し、ログイン成功後に戻れるようにする。

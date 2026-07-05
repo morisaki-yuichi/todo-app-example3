@@ -1,5 +1,5 @@
 import { Link, NavLink, Route, Routes, useNavigate } from 'react-router'
-import { useAuth } from './auth/AuthContext'
+import { useAuth } from './auth/useAuth'
 import { RequireAuth } from './auth/RequireAuth'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
