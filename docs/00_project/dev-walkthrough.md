@@ -1087,6 +1087,213 @@ PR ごとに往復を機械検証します。
 
 ---
 
+# 第2部 フロント編
+
+## スプリント5: React 環境構築
+
+- 計画: [スプリント5 バックログ](../05_sprint5/backlog.md) /
+  記録: [レビュー](../05_sprint5/review.md)・[レトロスペクティブ](../05_sprint5/retrospective.md)
+- PR: [#5 スプリント5: React 環境構築](https://github.com/morisaki-yuichi/todo-app-example3/pull/5)
+- このスプリントの概念: [SPA と Vite 開発サーバ](concepts.md#spa-と-vite-開発サーバ)・
+  [npm とロックファイル](concepts.md#npm-とロックファイル)・
+  [コンポーネントと JSX](concepts.md#コンポーネントと-jsx)・
+  [CSS Modules](concepts.md#css-modules)・
+  [Vite プロキシと同一オリジン](concepts.md#vite-プロキシと同一オリジン)
+
+### 全体の流れ
+
+```text
+Step 5-1  Vite で雛形生成            … ジェネレータの出力をそのままコミット
+Step 5-2  プロキシと .env 駆動ポート … /api → バックエンドへの転送
+Step 5-3  ルーティングと Home 画面   … 画面1枚（ローディング/成功/エラー）
+Step 5-4  Vitest + CI                … フロントにも「緑の基準」を作る
+```
+
+前提: バックエンド（第1部の成果物）が `docker compose up -d` で動いていること。
+
+---
+
+### Step 5-1: Vite で React + TypeScript の雛形を生成
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/b182af6) /
+  ローカル: `git show b182af6`
+
+**何を・なぜ**: フロントの土台をジェネレータで作ります。**生成物をそのまま1コミット**に
+するのは、次のコミット以降で「テンプレート由来」と「手による変更」が差分で
+区別できるようにするためです。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `frontend/` 一式（package.json, tsconfig*, index.html, src/ ほか） | CLI で生成（下記） |
+| `frontend/package-lock.json` | CLI で生成: `npm install` が自動生成。**必ずコミット**（uv.lock と同じ理由） |
+
+```bash
+# リポジトリルートで
+npm create vite@latest frontend -- --template react-ts
+cd frontend
+npm install
+npm run dev   # テンプレートの画面が出ることを確認して Ctrl+C
+```
+
+**動作確認**: `npm run dev` の表示する URL をブラウザで開き、テンプレート画面が出ること。
+
+**写経時の差異**: テンプレートの内容（React / Vite のバージョン、サンプル画面）は
+生成時期で変わります。本リポジトリは React 19 / Vite 8 / TypeScript 6 世代です。
+大きく違う場合は package.json のバージョンをリポジトリに合わせると差分が減ります。
+
+**ここでコミット**: `chore: Vite で React + TypeScript の雛形を生成`
+
+---
+
+### Step 5-2: Vite プロキシと .env 駆動のポート設定
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/d06ffe9) /
+  ローカル: `git show d06ffe9`
+
+**何を・なぜ**: フロント（5176）とバックエンド（8002）は別ポート = ブラウザから見ると
+**別オリジン**です。そのまま fetch すると CORS の壁に当たります（S8 で体験）。
+第2部前半は、Vite 開発サーバに `/api/...` をバックエンドへ転送させる
+**プロキシ方式**を使います。ブラウザから見ればすべて 5176 = 同一オリジンなので
+CORS 設定が不要になります。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `frontend/vite.config.ts` | 生成物を手で編集（loadEnv でルート .env を読み、port と proxy を設定） |
+| `.env.example` / `.env` | 既存ファイルを手で編集（`FRONT_PORT=5176` を追加） |
+
+読みどころ: `rewrite: (path) => path.replace(/^\/api/, '')` —
+フロントのコードは常に `/api/health` のように書き、プロキシが `/api` を剥がして
+`http://localhost:8002/health` へ届けます。「どこからが API 呼び出しか」が
+コード上で一目瞭然になり、S8 での接続先変更も1箇所で済みます。
+
+**動作確認**:
+
+```bash
+npm run dev &          # 起動したまま
+curl -s -w " [%{http_code}]" http://localhost:5176/api/health
+# => {"status":"ok"} [200]   ← フロントのポートから API の JSON が返る
+```
+
+**わざと失敗を見る実験⑥: プロキシを外すとどうなるか**
+
+`vite.config.ts` の `proxy` を一時的に消して同じ curl をしてみてください
+（予想を書いてから）。**404 ではなく、200 で index.html（HTML）が返ります**。
+SPA の開発サーバは未知のパスに index.html を返すためです。つまりプロキシ漏れの症状は
+HTTP エラーではなく、**`res.json()` の `Unexpected token '<'`（JSON パースエラー）**
+として現れます。→ [S5 レビュー記録](../05_sprint5/review.md#実験)
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| fetch が `Unexpected token '<'` で落ちる | プロキシ設定漏れ / パスの `/api` 付け忘れ。**JSON のはずが HTML が返っている**サイン。curl で実レスポンスを見る |
+| `/api/...` が 404（JSON のエラー） | プロキシは効いている（エラーが JSON = API 由来）。API 側のパスを確認 |
+| ポートが 5173 で起動する | ルート `.env` に `FRONT_PORT` がない、または dev サーバの再起動漏れ（vite.config の変更は自動再起動されるが .env の変更は手動再起動） |
+
+**ここでコミット**: `feat: Vite プロキシと .env 駆動のポート設定を追加`
+
+---
+
+### Step 5-3: ルーティングと Home 画面（画面1枚）
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/a99091b) /
+  ローカル: `git show a99091b`
+
+**何を・なぜ**: React Router のライブラリモードで `/` ルートを作り、
+Home 画面で `/api/health` を fetch して**3状態（ローディング / 成功 / エラー）**を
+描き分けます。これは S6 で本格化する「データ取得の型」の最小プレビューです。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `frontend/package.json` ほか | CLI で更新: `npm install react-router` |
+| `frontend/src/main.tsx` | 生成物を手で編集（BrowserRouter で包む） |
+| `frontend/src/App.tsx` | 生成物を手で編集（ヘッダー + Routes に全面書き換え） |
+| `frontend/src/App.module.css` `src/pages/Home.module.css` | 手で新規作成（CSS Modules） |
+| `frontend/src/pages/Home.tsx` | 手で新規作成 |
+| `frontend/src/index.css` | 生成物を手で編集（最小のグローバルスタイルに置換） |
+| `frontend/index.html` | 生成物を手で編集（title と lang） |
+| 削除: `src/App.css` `src/assets/` `public/vite.svg` | テンプレートのサンプル画面の残骸 |
+
+**編集の順序と理由**: ルータの土台（main → App）→ ページ（Home）→ スタイル。
+「アプリ全体の構造 → 個別画面」の外から内の順です（API と逆なのは、UI は
+枠がないと画面を差し込む場所がないため）。
+
+読みどころ:
+
+- `HealthState` は**判別可能なユニオン型**。`loading: boolean` と `error: string | null`
+  を別々に持つと「loading かつ error」というありえない状態が作れてしまう。
+  型で状態遷移を1本道にするのが TypeScript らしい設計
+- `useEffect` 内の `cancelled` フラグ: StrictMode（開発時）は effect を2回実行する。
+  古い実行の結果で状態を上書きしないための定石（深掘りは S6）
+
+**動作確認（ブラウザ）**: `http://localhost:5176/` を開き、
+①ヘッダーに「TODO アプリ」、②本文に「バックエンド API と接続OK」が出れば合格。
+`docker compose stop api` してからリロードすると**エラー表示**に変わること、
+`start api` で復帰することも確認してください（ローディングは一瞬なので、
+開発者ツールの Network タブで throttling をかけると見えます）。
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| `styles.header` が undefined でクラスが当たらない | ファイル名が `*.module.css` になっていない（`.css` は CSS Modules にならない） |
+| 画面が真っ白 | ブラウザのコンソールを開く（JS の実行時エラーは画面でなくコンソールに出る）。import パスのタイポが典型 |
+| 「接続OK」でなくエラー表示 | バックエンド未起動（`docker compose ps`）か、プロキシ設定（Step 5-2）に戻る |
+
+**ここでコミット**: `feat: ルーティングと Home 画面を追加（API ヘルス表示・CSS Modules）`
+
+---
+
+### Step 5-4: Vitest + React Testing Library と CI
+
+- 差分: [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/9cd1780)（テスト）・
+  [GitHub](https://github.com/morisaki-yuichi/todo-app-example3/commit/ff3f5ce)（CI） /
+  ローカル: `git show 9cd1780` `git show ff3f5ce`
+
+**何を・なぜ**: フロントにも「緑の基準」を作ります。Home の3状態を、fetch を
+モックして検証します（実 API との結合は S10 の E2E の担当）。
+
+**足場の作り方**
+
+| ファイル | 作り方 |
+|---|---|
+| `frontend/package.json` ほか | CLI で更新: `npm install -D vitest jsdom @testing-library/react @testing-library/jest-dom @testing-library/user-event` |
+| `frontend/vite.config.ts` | 既存ファイルを手で編集（`test:` セクション追加） |
+| `frontend/src/setupTests.ts` | 手で新規作成 |
+| `frontend/src/pages/Home.test.tsx` | 手で新規作成 |
+| `.github/workflows/ci.yml` | 既存ファイルを手で編集（frontend-test ジョブ追加） |
+
+読みどころ:
+
+- ローディング状態のテスト: `new Promise(() => {})`（**永遠に解決しない Promise**）を
+  fetch に返させると、ローディング表示のまま止まった状態を検証できる
+- `findByText`（現れるまで待つ）と `getByText`（今あるはず）の使い分け。
+  fetch 解決後の表示は非同期なので `findBy*` を使う
+- CI は `npm ci`（ロックと完全一致、不一致なら失敗）。`npm install` にしない理由は
+  uv sync --locked と同じ（再現性 + ロックのコミット忘れ検出）
+
+**動作確認**: `npm test` → 3 passed。`npm run build` も緑（tsc の型チェック込み）。
+
+**よくあるエラーと症状**
+
+| 症状 | 原因の辿り方 |
+|---|---|
+| `document is not defined` | `environment: 'jsdom'` の設定漏れ |
+| `toBeInTheDocument is not a function` | setupTests.ts（jest-dom/vitest の import）漏れ、または setupFiles 未登録 |
+| CI の npm ci が `EUSAGE` で失敗 | package-lock.json のコミット漏れ |
+
+**ここでコミット**: テストと CI は別コミット
+（`test: Vitest + React Testing Library を導入し Home の3状態をテスト` /
+`ci: フロントエンドの型チェック・ビルド・テストを CI に追加`）。
+
+---
+
 ## ユーザーストーリー × 実装コミット × PR の対応マップ
 
 | ストーリー / PBI | コミット | PR |
@@ -1101,6 +1308,7 @@ PR ごとに往復を機械検証します。
 | US-07 削除（API・認可は S4） | 684e6d6 | [#3](https://github.com/morisaki-yuichi/todo-app-example3/pull/3) |
 | US-01 登録 / US-02 ログイン（API編） | f627cd7, 6061e10 | [#4](https://github.com/morisaki-yuichi/todo-app-example3/pull/4) |
 | US-08 認可（API編） + US-03〜07 の 401/403 回収 | 46f39ec, e1c9476 | [#4](https://github.com/morisaki-yuichi/todo-app-example3/pull/4) |
+| PBI-11 フロント環境の土台 | b182af6, d06ffe9, a99091b, 9cd1780, ff3f5ce | [#5](https://github.com/morisaki-yuichi/todo-app-example3/pull/5) |
 
 ## コミットに残っていない出来事の一覧
 
@@ -1118,3 +1326,4 @@ PR ごとに往復を機械検証します。
 | 実験④: NOT NULL 列の一発追加 → NotNullViolation → 3段階移行に修正 | [S4 レビュー記録](../04_sprint4/review.md#実験) |
 | 実験⑤: 認可チェックを外す → 他人の TODO が 200 で漏える・ペアテストが検出 | [S4 レビュー記録](../04_sprint4/review.md#実験) |
 | コンテナ内 venv への新依存の未同期 → ImportError でリロード死 → restart で解決 | [S4 レビュー記録](../04_sprint4/review.md#トラブル記録) |
+| 実験⑥: プロキシを外す → 404 ではなく 200 + index.html（JSON パースエラーの正体） | [S5 レビュー記録](../05_sprint5/review.md#実験) |

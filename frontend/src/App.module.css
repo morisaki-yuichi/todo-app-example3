@@ -1,0 +1,22 @@
+/* CSS Modules: ここのクラス名はビルド時に「App_header_x7f3k」のような
+   一意な名前に変換されるため、他コンポーネントと衝突しない */
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  background-color: #1f2933;
+}
+
+.brand {
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-decoration: none;
+}
+
+.main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
