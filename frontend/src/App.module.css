@@ -15,6 +15,37 @@
   text-decoration: none;
 }
 
+.nav {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nav a {
+  color: #cbd2d9;
+  text-decoration: none;
+}
+
+.nav a[aria-current='page'] {
+  color: #fff;
+  font-weight: 600;
+}
+
+.userEmail {
+  color: #9aa5b1;
+  font-size: 0.85rem;
+}
+
+.logout {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid #52606d;
+  border-radius: 4px;
+  background: none;
+  color: #cbd2d9;
+  cursor: pointer;
+}
+
 .main {
   max-width: 720px;
   margin: 0 auto;

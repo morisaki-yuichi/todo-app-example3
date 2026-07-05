@@ -1,19 +1,68 @@
-import { Link, Route, Routes } from 'react-router'
+import { Link, NavLink, Route, Routes, useNavigate } from 'react-router'
+import { useAuth } from './auth/AuthContext'
+import { RequireAuth } from './auth/RequireAuth'
 import { Home } from './pages/Home'
+import { Login } from './pages/Login'
+import { Register } from './pages/Register'
+import { Todos } from './pages/Todos'
 import styles from './App.module.css'
+
+function Header() {
+  const { user, initializing, logout } = useAuth()
+  const navigate = useNavigate()
+
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login')
+  }
+
+  return (
+    <header className={styles.header}>
+      <Link to="/" className={styles.brand}>
+        TODO アプリ
+      </Link>
+      <nav className={styles.nav}>
+        {initializing ? null : user ? (
+          <>
+            <NavLink to="/todos">一覧</NavLink>
+            <span className={styles.userEmail}>{user.email}</span>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className={styles.logout}
+            >
+              ログアウト
+            </button>
+          </>
+        ) : (
+          <>
+            <NavLink to="/login">ログイン</NavLink>
+            <NavLink to="/register">新規登録</NavLink>
+          </>
+        )}
+      </nav>
+    </header>
+  )
+}
 
 function App() {
   return (
     <div>
-      <header className={styles.header}>
-        <Link to="/" className={styles.brand}>
-          TODO アプリ
-        </Link>
-      </header>
+      <Header />
       <main className={styles.main}>
         <Routes>
           <Route path="/" element={<Home />} />
-          {/* 一覧・詳細・ログインのルートは S6 で追加する */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route
+            path="/todos"
+            element={
+              <RequireAuth>
+                <Todos />
+              </RequireAuth>
+            }
+          />
+          {/* 詳細・作成・編集のルートは S7 で追加する */}
         </Routes>
       </main>
     </div>
