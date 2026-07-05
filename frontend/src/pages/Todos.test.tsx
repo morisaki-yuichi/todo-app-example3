@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { listTodos } from '../api/todos'
@@ -42,7 +43,7 @@ describe('Todos', () => {
       ]),
     )
 
-    render(<Todos />)
+    render(<Todos />, { wrapper: MemoryRouter })
 
     expect(await screen.findByText('牛乳を買う')).toBeInTheDocument()
     expect(screen.getByText('週報を書く')).toBeInTheDocument()
@@ -55,7 +56,7 @@ describe('Todos', () => {
   it('0件なら空メッセージを表示する', async () => {
     mockedListTodos.mockResolvedValue(makeResponse([]))
 
-    render(<Todos />)
+    render(<Todos />, { wrapper: MemoryRouter })
 
     expect(
       await screen.findByText('TODO はまだありません'),
@@ -65,7 +66,7 @@ describe('Todos', () => {
   it('取得に失敗したらエラーを表示する', async () => {
     mockedListTodos.mockRejectedValue(new Error('boom'))
 
-    render(<Todos />)
+    render(<Todos />, { wrapper: MemoryRouter })
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       '一覧を取得できませんでした',
@@ -76,7 +77,7 @@ describe('Todos', () => {
     mockedListTodos.mockResolvedValue(makeResponse([makeTodo()]))
     const user = userEvent.setup()
 
-    render(<Todos />)
+    render(<Todos />, { wrapper: MemoryRouter })
     await screen.findByText('牛乳を買う')
 
     await user.selectOptions(
@@ -97,7 +98,7 @@ describe('Todos', () => {
     )
     const user = userEvent.setup()
 
-    render(<Todos />)
+    render(<Todos />, { wrapper: MemoryRouter })
     await screen.findByText('牛乳を買う')
 
     await user.click(screen.getByRole('button', { name: '次へ' }))
@@ -113,7 +114,7 @@ describe('Todos', () => {
     mockedListTodos.mockResolvedValue(makeResponse([makeTodo()]))
     const user = userEvent.setup()
 
-    render(<Todos />)
+    render(<Todos />, { wrapper: MemoryRouter })
     await screen.findByText('牛乳を買う')
 
     await user.type(screen.getByLabelText('キーワード'), '牛乳')

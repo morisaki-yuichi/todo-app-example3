@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
 import { listTodos } from '../api/todos'
 import type { TodoListResponse } from '../api/types'
 import styles from './Todos.module.css'
@@ -106,7 +107,9 @@ export function Todos() {
                 >
                   {todo.completed ? '完了' : '未完了'}
                 </span>
-                <span className={styles.title}>{todo.title}</span>
+                <Link to={`/todos/${todo.id}`} className={styles.title}>
+                  {todo.title}
+                </Link>
                 {todo.due_date && (
                   <span className={styles.dueDate}>期限: {todo.due_date}</span>
                 )}
