@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { Route, Routes } from 'react-router'
+import { renderWithProviders } from '../test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
 import * as todosApi from '../api/todos'
@@ -22,13 +23,12 @@ const TODO: Todo = {
 }
 
 function renderDetail(id = 5) {
-  render(
-    <MemoryRouter initialEntries={[`/todos/${id}`]}>
-      <Routes>
-        <Route path="/todos" element={<p>一覧ページ（スタブ）</p>} />
-        <Route path="/todos/:id" element={<TodoDetail />} />
-      </Routes>
-    </MemoryRouter>,
+  renderWithProviders(
+    <Routes>
+      <Route path="/todos" element={<p>一覧ページ（スタブ）</p>} />
+      <Route path="/todos/:id" element={<TodoDetail />} />
+    </Routes>,
+    { initialEntries: [`/todos/${id}`] },
   )
 }
 
