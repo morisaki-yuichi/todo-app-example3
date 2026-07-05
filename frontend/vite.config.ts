@@ -25,6 +25,8 @@ export default defineConfig(({ mode }) => {
       // ブラウザ環境（document 等）を Node 上で再現する
       environment: 'jsdom',
       setupFiles: './src/setupTests.ts',
+      // e2e/（Playwright 管轄）を Vitest が拾わないよう、単体テストは src/ に限定
+      include: ['src/**/*.test.{ts,tsx}'],
     },
   }
 })
