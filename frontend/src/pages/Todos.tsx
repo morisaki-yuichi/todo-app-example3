@@ -1,61 +1,56 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { listTodos, updateTodo } from '../api/todos'
-import type { Todo, TodoListResponse } from '../api/types'
+import type { Todo } from '../api/types'
 import styles from './Todos.module.css'
-
-type ListState =
-  | { status: 'loading' }
-  | { status: 'success'; data: TodoListResponse }
-  | { status: 'error'; message: string }
 
 type CompletedFilter = 'all' | 'active' | 'done'
 
 export function Todos() {
-  const [state, setState] = useState<ListState>({ status: 'loading' })
   const [page, setPage] = useState(1)
   const [filter, setFilter] = useState<CompletedFilter>('all')
   // 「入力中の値」と「確定した検索語」を分ける。入力のたびに fetch しないため
   const [queryInput, setQueryInput] = useState('')
-  const [query, setQuery] = useState('')
-  // 完了トグル等の更新後に一覧を取り直すためのカウンタ（依存配列に入れる）
-  const [reloadKey, setReloadKey] = useState(0)
+  const [searchWord, setSearchWord] = useState('')
 
-  useEffect(() => {
-    let cancelled = false
-    setState({ status: 'loading' })
-    listTodos({
-      page,
-      completed: filter === 'all' ? undefined : filter === 'done',
-      q: query || undefined,
-    })
-      .then((data) => {
-        if (!cancelled) setState({ status: 'success', data })
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setState({ status: 'error', message: String(err) })
-      })
-    return () => {
-      cancelled = true
-    }
-    // 依存配列: ここに挙げた値が変わるたびに再取得する。
-    // 1つでも書き漏らすと「変えたのに画面が変わらない」バグになる（実験⑦）
-  }, [page, filter, query, reloadKey])
-
-  const handleToggle = async (todo: Todo) => {
-    try {
-      await updateTodo(todo.id, { completed: !todo.completed })
-      // 手元の配列を書き換えず、サーバから取り直す（サーバが真実）。
-      // 絞り込み中なら、完了にした項目が一覧から消える挙動も正しく反映される
-      setReloadKey((key) => key + 1)
-    } catch {
-      window.alert('完了状態の更新に失敗しました')
-    }
+  const listParams = {
+    page,
+    completed: filter === 'all' ? undefined : filter === 'done',
+    q: searchWord || undefined,
   }
+
+  // queryKey = このデータの「住所」。パラメータが変われば別の住所 = 取り直し。
+  // S6 で依存配列 + cancelled フラグ + 3状態を手書きしていた仕事がこの1つに集約される
+  const todosQuery = useQuery({
+    queryKey: ['todos', listParams],
+    queryFn: () => listTodos(listParams),
+    // ページ移動中は前ページのデータを表示し続ける（ローディングのちらつき防止）
+    placeholderData: keepPreviousData,
+  })
+
+  const queryClient = useQueryClient()
+  const toggleMutation = useMutation({
+    mutationFn: (todo: Todo) =>
+      updateTodo(todo.id, { completed: !todo.completed }),
+    onSuccess: () => {
+      // 「'todos' で始まる住所のキャッシュはもう古い」と宣言する。
+      // 表示中の一覧は自動で再取得される（reloadKey カウンタの正統な後継）
+      queryClient.invalidateQueries({ queryKey: ['todos'] })
+    },
+    onError: () => {
+      window.alert('完了状態の更新に失敗しました')
+    },
+  })
 
   const handleSearch = (event: FormEvent) => {
     event.preventDefault()
-    setQuery(queryInput)
+    setSearchWord(queryInput)
     setPage(1) // 検索条件が変わったら1ページ目に戻す
   }
 
@@ -95,33 +90,33 @@ export function Todos() {
         </form>
       </div>
 
-      {state.status === 'loading' && <p>読み込み中…</p>}
+      {todosQuery.isPending && <p>読み込み中…</p>}
 
-      {state.status === 'error' && (
+      {todosQuery.isError && (
         <p role="alert" className={styles.error}>
-          一覧を取得できませんでした（{state.message}）
+          一覧を取得できませんでした（{String(todosQuery.error)}）
         </p>
       )}
 
-      {state.status === 'success' && state.data.items.length === 0 && (
+      {todosQuery.isSuccess && todosQuery.data.items.length === 0 && (
         <p className={styles.empty}>
-          {query || filter !== 'all'
+          {searchWord || filter !== 'all'
             ? '条件に合う TODO はありません'
             : 'TODO はまだありません'}
         </p>
       )}
 
-      {state.status === 'success' && state.data.items.length > 0 && (
+      {todosQuery.isSuccess && todosQuery.data.items.length > 0 && (
         <>
           <ul className={styles.list}>
-            {state.data.items.map((todo) => (
+            {todosQuery.data.items.map((todo) => (
               // key: React が「どの行がどの行か」を追跡するための一意な目印。
               // 配列の index ではなく安定した id を使う（並び替え・削除で壊れないため）
               <li key={todo.id} className={styles.item}>
                 <input
                   type="checkbox"
                   checked={todo.completed}
-                  onChange={() => handleToggle(todo)}
+                  onChange={() => toggleMutation.mutate(todo)}
                   aria-label={`${todo.title} を${todo.completed ? '未完了' : '完了'}にする`}
                 />
                 <span
@@ -141,9 +136,9 @@ export function Todos() {
             ))}
           </ul>
           <Pager
-            page={state.data.page}
-            perPage={state.data.per_page}
-            total={state.data.total}
+            page={todosQuery.data.page}
+            perPage={todosQuery.data.per_page}
+            total={todosQuery.data.total}
             onMove={setPage}
           />
         </>
