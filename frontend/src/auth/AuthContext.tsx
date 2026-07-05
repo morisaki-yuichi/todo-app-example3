@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import * as authApi from '../api/auth'
+import { getToken } from '../api/token'
 import type { User } from '../api/types'
 import { AuthContext } from './context'
 
@@ -7,10 +8,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [initializing, setInitializing] = useState(true)
 
-  // 起動時に1回だけ、cookie セッションからログイン状態を復元する。
-  // リロードしても JS のメモリは消えるが、cookie は残っている——
-  // 「誰か」をサーバに聞き直すのがこの処理
+  // 起動時に1回だけ、保存済みトークンからログイン状態を復元する。
+  // リロードしても JS のメモリは消えるが、localStorage のトークンは残っている——
+  // それが有効かどうか（期限切れ・改ざんでないか）をサーバに聞き直すのがこの処理
   useEffect(() => {
+    if (getToken() === null) {
+      // トークンがなければ聞くまでもなく未ログイン
+      setInitializing(false)
+      return
+    }
     let cancelled = false
     authApi
       .fetchMe()
@@ -18,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setUser(me)
       })
       .catch(() => {
-        // 401 = 未ログイン。異常ではないので握りつぶして null のままにする
+        // 401 = トークンが無効（期限切れ等）。異常ではないので null のままにする
         if (!cancelled) setUser(null)
       })
       .finally(() => {
@@ -38,8 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await authApi.register(email, password))
   }
 
-  const logout = async () => {
-    await authApi.logout()
+  const logout = () => {
+    authApi.logout() // トークン破棄のみ（JWT にサーバ側の失効処理はない）
     setUser(null)
   }
 
