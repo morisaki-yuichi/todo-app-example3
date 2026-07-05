@@ -53,7 +53,12 @@ export function Todos() {
 
   return (
     <section>
-      <h1>TODO 一覧</h1>
+      <div className={styles.heading}>
+        <h1>TODO 一覧</h1>
+        <Link to="/todos/new" className={styles.newButton}>
+          + 新規作成
+        </Link>
+      </div>
 
       <div className={styles.controls}>
         <select
