@@ -102,3 +102,5 @@ npm test        # Vitest
   （[レビュー](docs/07_sprint7/review.md) / [レトロ](docs/07_sprint7/retrospective.md)）
 - [スプリント8: JWT + CORS への移行](docs/08_sprint8/backlog.md)
   （[レビュー](docs/08_sprint8/review.md) / [レトロ](docs/08_sprint8/retrospective.md)）
+- [スプリント9: TanStack Query 導入](docs/09_sprint9/backlog.md)
+  （[レビュー](docs/09_sprint9/review.md) / [レトロ](docs/09_sprint9/retrospective.md)）
