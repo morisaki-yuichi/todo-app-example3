@@ -4,6 +4,9 @@ import { RequireAuth } from './auth/RequireAuth'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
+import { TodoDetail } from './pages/TodoDetail'
+import { TodoEdit } from './pages/TodoEdit'
+import { TodoNew } from './pages/TodoNew'
 import { Todos } from './pages/Todos'
 import styles from './App.module.css'
 
@@ -62,7 +65,30 @@ function App() {
               </RequireAuth>
             }
           />
-          {/* 詳細・作成・編集のルートは S7 で追加する */}
+          <Route
+            path="/todos/new"
+            element={
+              <RequireAuth>
+                <TodoNew />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/todos/:id"
+            element={
+              <RequireAuth>
+                <TodoDetail />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/todos/:id/edit"
+            element={
+              <RequireAuth>
+                <TodoEdit />
+              </RequireAuth>
+            }
+          />
         </Routes>
       </main>
     </div>

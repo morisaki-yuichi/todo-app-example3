@@ -1,0 +1,58 @@
+.fields {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: 0.5rem 1rem;
+  padding: 1rem;
+  background-color: #fff;
+  border: 1px solid #e4e7eb;
+  border-radius: 6px;
+}
+
+.fields dt {
+  color: #52606d;
+  font-size: 0.9rem;
+}
+
+.fields dd {
+  margin: 0;
+}
+
+.none {
+  color: #9aa5b1;
+}
+
+.doneTitle {
+  text-decoration: line-through;
+  color: #52606d;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.actions button,
+.editLink {
+  padding: 0.4rem 1rem;
+  border: 1px solid #52606d;
+  border-radius: 4px;
+  background-color: #fff;
+  color: #1f2933;
+  text-decoration: none;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.deleteButton {
+  border-color: #ab091e;
+  color: #ab091e;
+}
+
+.error {
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  background-color: #ffe3e3;
+  color: #ab091e;
+}

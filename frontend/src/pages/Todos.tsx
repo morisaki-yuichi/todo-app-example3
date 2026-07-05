@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { listTodos } from '../api/todos'
-import type { TodoListResponse } from '../api/types'
+import { Link } from 'react-router'
+import { listTodos, updateTodo } from '../api/todos'
+import type { Todo, TodoListResponse } from '../api/types'
 import styles from './Todos.module.css'
 
 type ListState =
@@ -17,6 +18,8 @@ export function Todos() {
   // 「入力中の値」と「確定した検索語」を分ける。入力のたびに fetch しないため
   const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
+  // 完了トグル等の更新後に一覧を取り直すためのカウンタ（依存配列に入れる）
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -37,7 +40,18 @@ export function Todos() {
     }
     // 依存配列: ここに挙げた値が変わるたびに再取得する。
     // 1つでも書き漏らすと「変えたのに画面が変わらない」バグになる（実験⑦）
-  }, [page, filter, query])
+  }, [page, filter, query, reloadKey])
+
+  const handleToggle = async (todo: Todo) => {
+    try {
+      await updateTodo(todo.id, { completed: !todo.completed })
+      // 手元の配列を書き換えず、サーバから取り直す（サーバが真実）。
+      // 絞り込み中なら、完了にした項目が一覧から消える挙動も正しく反映される
+      setReloadKey((key) => key + 1)
+    } catch {
+      window.alert('完了状態の更新に失敗しました')
+    }
+  }
 
   const handleSearch = (event: FormEvent) => {
     event.preventDefault()
@@ -52,7 +66,12 @@ export function Todos() {
 
   return (
     <section>
-      <h1>TODO 一覧</h1>
+      <div className={styles.heading}>
+        <h1>TODO 一覧</h1>
+        <Link to="/todos/new" className={styles.newButton}>
+          + 新規作成
+        </Link>
+      </div>
 
       <div className={styles.controls}>
         <select
@@ -99,6 +118,12 @@ export function Todos() {
               // key: React が「どの行がどの行か」を追跡するための一意な目印。
               // 配列の index ではなく安定した id を使う（並び替え・削除で壊れないため）
               <li key={todo.id} className={styles.item}>
+                <input
+                  type="checkbox"
+                  checked={todo.completed}
+                  onChange={() => handleToggle(todo)}
+                  aria-label={`${todo.title} を${todo.completed ? '未完了' : '完了'}にする`}
+                />
                 <span
                   className={
                     todo.completed ? styles.badgeDone : styles.badgeActive
@@ -106,7 +131,9 @@ export function Todos() {
                 >
                   {todo.completed ? '完了' : '未完了'}
                 </span>
-                <span className={styles.title}>{todo.title}</span>
+                <Link to={`/todos/${todo.id}`} className={styles.title}>
+                  {todo.title}
+                </Link>
                 {todo.due_date && (
                   <span className={styles.dueDate}>期限: {todo.due_date}</span>
                 )}
