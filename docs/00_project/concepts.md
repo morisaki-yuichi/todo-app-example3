@@ -365,4 +365,84 @@ CI での up/down 往復検証は [.github/workflows/ci.yml](../../.github/workf
 
 ---
 
-（第2部（S5 以降）の概念はスプリント終了ごとにここへ追記する）
+# 第2部 フロント編
+
+## スプリント5で登場した概念
+
+### SPA と Vite 開発サーバ
+
+**① 一言定義**: SPA（Single Page Application）は、HTML を1枚だけ受け取り、
+以降の画面はブラウザ内の JavaScript が組み立てる方式。Vite はその開発サーバ +
+ビルドツールで、変更を瞬時に反映する HMR（Hot Module Replacement）を持つ。
+
+**② なぜ必要か**: 姉妹プロジェクト（Laravel）はサーバが画面を組み立てて返す方式
+だった。SPA は画面遷移のたびにページ全体を作り直さないため操作感が良い一方、
+「データ取得・ローディング・エラー・認証状態」をすべて**ブラウザ側で自前管理**する
+必要がある——第2部で学ぶのは、まさにこの自前管理の作法。
+
+**③ 実例**: `npm run dev`（開発サーバ）と `npm run build`（本番ビルド）。
+未知のパスに index.html を返す SPA フォールバックの挙動は
+[実験⑥](../05_sprint5/review.md#実験) で観察した
+→ [Step 5-1](dev-walkthrough.md#step-5-1-vite-で-react--typescript-の雛形を生成)
+
+### npm とロックファイル
+
+**① 一言定義**: npm は Node.js のパッケージ管理。`package.json` が「欲しい範囲」、
+`package-lock.json` が「実際に解決された正確な版」を記録する。
+
+**② なぜ必要か**: バックエンドの uv / uv.lock とまったく同じ理屈
+（→ [ロックファイル](#ロックファイル)）。CI では `npm install` ではなく
+**`npm ci`**（ロックと完全一致で入れ、不一致なら失敗）を使うことで、
+「ロックのコミット忘れ」も機械検出できる。
+
+**③ 実例**: [frontend/package-lock.json](../../frontend/package-lock.json) と
+[CI の frontend-test ジョブ](../../.github/workflows/ci.yml)
+→ [Step 5-4](dev-walkthrough.md#step-5-4-vitest--react-testing-library-と-ci)
+
+### コンポーネントと JSX
+
+**① 一言定義**: コンポーネントは「見た目とその振る舞いを1つにした再利用可能な部品」
+（実体は JSX を返す関数）。JSX は JavaScript の中に HTML 風の記法を書ける構文拡張。
+
+**② なぜ必要か**: 素の DOM 操作（`document.getElementById(...).innerHTML = ...`）は、
+「データの変化」と「画面の更新」の対応を人間が手で保つ必要があり、
+規模が増えると即座に破綻する（更新漏れ・二重更新）。React は
+「状態 → 見た目」の変換を関数として書き、更新は React が計算する宣言的モデル。
+
+**③ 実例**: [frontend/src/pages/Home.tsx](../../frontend/src/pages/Home.tsx)。
+`HealthState`（判別可能なユニオン型）が「ありえない状態を型で排除する」実例
+→ [Step 5-3](dev-walkthrough.md#step-5-3-ルーティングと-home-画面画面1枚)
+
+### CSS Modules
+
+**① 一言定義**: `*.module.css` のクラス名をビルド時に一意な名前へ変換し、
+コンポーネント単位でスタイルをスコープする仕組み（Vite 標準機能）。
+
+**② なぜ必要か**: グローバルな CSS はクラス名が全ファイルで衝突しうる。
+「他人の `.header` を上書きして別ページが崩れた」は大規模 CSS の定番事故。
+CSS フレームワークを使わない本教材では、素の CSS を安全に書く器として使う。
+
+**③ 実例**: [frontend/src/App.module.css](../../frontend/src/App.module.css) と
+`import styles from './App.module.css'` → `className={styles.header}`。
+ファイル名が `.module.css` でないと**ただのグローバル CSS になる**（ハマりどころ）。
+
+### Vite プロキシと同一オリジン
+
+**① 一言定義**: オリジン = スキーム + ホスト + ポートの組。ブラウザは
+別オリジンへの JS からのリクエストを制限する（同一オリジンポリシー）。
+Vite プロキシは開発サーバに API を中継させ、ブラウザから見た通信を同一オリジンに保つ。
+
+**② なぜ必要か**: フロント（5176）と API（8002）はポートが違うだけで**別オリジン**。
+直接 fetch すると CORS 制限に当たる。プロキシ方式なら CORS 設定なしで開発を始められ、
+cookie も同一オリジンとして素直に送られる。「なぜ制限があるのか（悪意あるサイトが
+あなたのログイン済み cookie で銀行 API を叩く攻撃の防止）」を含め、
+S8 でプロキシを外して CORS を正面から扱う。
+
+**③ 実例**: [frontend/vite.config.ts](../../frontend/vite.config.ts) の
+`proxy: { '/api': ... }`。プロキシ漏れの症状（200 + HTML → JSON パースエラー）は
+[実験⑥](../05_sprint5/review.md#実験)
+→ [Step 5-2](dev-walkthrough.md#step-5-2-vite-プロキシと-env-駆動のポート設定)
+
+---
+
+（S6 以降の概念はスプリント終了ごとにここへ追記する）

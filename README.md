@@ -53,6 +53,15 @@ curl -s -b /tmp/alice.jar http://localhost:8002/todos
 uv run pytest
 ```
 
+フロントエンド（Vite 開発サーバ。API へは `/api` プロキシで接続）:
+
+```bash
+cd frontend
+npm install     # 初回のみ（package-lock.json から復元）
+npm run dev     # http://localhost:5176 が開く（ポートは .env の FRONT_PORT）
+npm test        # Vitest
+```
+
 ## ドキュメント
 
 ### プロジェクト全体
@@ -83,4 +92,6 @@ uv run pytest
 - [スプリント3: Create / Update / Delete](docs/03_sprint3/backlog.md)
   （[レビュー](docs/03_sprint3/review.md) / [レトロ](docs/03_sprint3/retrospective.md)）
 - [スプリント4: 認証・認可 + CI 固め](docs/04_sprint4/backlog.md)
-  （[レビュー](docs/04_sprint4/review.md) / [レトロ](docs/04_sprint4/retrospective.md)）
+  （[レビュー](docs/04_sprint4/review.md) / [レトロ](docs/04_sprint4/retrospective.md)）— 第1部完了（M1）
+- [スプリント5: React 環境構築](docs/05_sprint5/backlog.md)
+  （[レビュー](docs/05_sprint5/review.md) / [レトロ](docs/05_sprint5/retrospective.md)）
