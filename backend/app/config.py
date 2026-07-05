@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     db_host: str = "localhost"
     db_port: int = 5433
 
+    # JWT の署名鍵。漏れると誰でもトークンを偽造できる。本番では必ず .env で
+    # 長いランダム値に差し替える（既定値は開発専用）
+    secret_key: str = "dev-secret-key-change-me"
+    access_token_expire_minutes: int = 60
+
+    # CORS で許可するフロントのオリジン（S8 で導入）
+    frontend_origin: str = "http://localhost:5176"
+
     @property
     def database_url(self) -> str:
         return (
