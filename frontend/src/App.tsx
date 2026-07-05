@@ -5,6 +5,7 @@ import { Home } from './pages/Home'
 import { Login } from './pages/Login'
 import { Register } from './pages/Register'
 import { TodoDetail } from './pages/TodoDetail'
+import { TodoEdit } from './pages/TodoEdit'
 import { TodoNew } from './pages/TodoNew'
 import { Todos } from './pages/Todos'
 import styles from './App.module.css'
@@ -77,6 +78,14 @@ function App() {
             element={
               <RequireAuth>
                 <TodoDetail />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/todos/:id/edit"
+            element={
+              <RequireAuth>
+                <TodoEdit />
               </RequireAuth>
             }
           />
