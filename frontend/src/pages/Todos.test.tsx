@@ -2,13 +2,14 @@ import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { listTodos } from '../api/todos'
+import { listTodos, updateTodo } from '../api/todos'
 import type { Todo, TodoListResponse } from '../api/types'
 import { Todos } from './Todos'
 
 vi.mock('../api/todos')
 
 const mockedListTodos = vi.mocked(listTodos)
+const mockedUpdateTodo = vi.mocked(updateTodo)
 
 function makeTodo(overrides: Partial<Todo> = {}): Todo {
   return {
@@ -108,6 +109,24 @@ describe('Todos', () => {
       completed: undefined,
       q: undefined,
     })
+  })
+
+  it('チェックボックスで完了を切り替え、一覧を取り直す', async () => {
+    mockedListTodos.mockResolvedValue(makeResponse([makeTodo()]))
+    mockedUpdateTodo.mockResolvedValue({ ...makeTodo(), completed: true })
+    const user = userEvent.setup()
+
+    render(<Todos />, { wrapper: MemoryRouter })
+    await screen.findByText('牛乳を買う')
+    const callsBefore = mockedListTodos.mock.calls.length
+
+    await user.click(
+      screen.getByRole('checkbox', { name: '牛乳を買う を完了にする' }),
+    )
+
+    expect(mockedUpdateTodo).toHaveBeenCalledWith(1, { completed: true })
+    // 更新後に一覧を取り直している（refetch）
+    expect(mockedListTodos.mock.calls.length).toBeGreaterThan(callsBefore)
   })
 
   it('キーワードを入れて検索すると q つきで再取得する', async () => {
