@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { fileURLToPath } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -25,6 +26,11 @@ export default defineConfig(({ mode }) => {
           rewrite: (path) => path.replace(/^\/api/, ''),
         },
       },
+    },
+    test: {
+      // ブラウザ環境（document 等）を Node 上で再現する
+      environment: 'jsdom',
+      setupFiles: './src/setupTests.ts',
     },
   }
 })
