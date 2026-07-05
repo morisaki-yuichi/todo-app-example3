@@ -17,8 +17,9 @@ class Settings(BaseSettings):
     db_port: int = 5433
 
     # JWT の署名鍵。漏れると誰でもトークンを偽造できる。本番では必ず .env で
-    # 長いランダム値に差し替える（既定値は開発専用）
-    secret_key: str = "dev-secret-key-change-me"
+    # ランダム値に差し替える（既定値は開発専用）。
+    # HS256 の鍵は32バイト以上が必須（短いと pyjwt が InsecureKeyLengthWarning を出す）
+    secret_key: str = "dev-secret-key-change-me-0123456789abcdef"
     access_token_expire_minutes: int = 60
 
     # CORS で許可するフロントのオリジン（S8 で導入）
