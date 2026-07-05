@@ -97,3 +97,5 @@ npm test        # Vitest
   （[レビュー](docs/05_sprint5/review.md) / [レトロ](docs/05_sprint5/retrospective.md)）
 - [スプリント6: ログイン + TODO 一覧](docs/06_sprint6/backlog.md)
   （[レビュー](docs/06_sprint6/review.md) / [レトロ](docs/06_sprint6/retrospective.md)）
+- [スプリント7: 詳細画面 + 作成・編集・削除フォーム](docs/07_sprint7/backlog.md)
+  （[レビュー](docs/07_sprint7/review.md) / [レトロ](docs/07_sprint7/retrospective.md)）
