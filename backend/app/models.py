@@ -20,22 +20,9 @@ class User(SQLModel, table=True):
     )
 
 
-class UserSession(SQLModel, table=True):
-    """cookie セッションの実体（サーバ側に保存する「ステートフル」方式）。
-
-    cookie にはこの token だけが入る。ログアウト = この行の削除なので、
-    サーバ側から即時に無効化できる（JWT との対比ポイント。S8 で扱う）。
-    ※ クラス名を Session にすると sqlmodel.Session と衝突するため UserSession
-    """
-
-    __tablename__ = "sessions"
-
-    token: str = Field(primary_key=True, max_length=64)
-    user_id: int = Field(foreign_key="users.id", index=True)
-    expires_at: datetime = Field(sa_type=DateTime(timezone=True))
-    created_at: datetime = Field(
-        default_factory=utcnow, sa_type=DateTime(timezone=True)
-    )
+# UserSession（sessions テーブル）は S8 の JWT 移行で廃止した。
+# JWT はサーバ側に状態を持たない（ステートレス）ため、セッションの実体が不要になる。
+# 経緯は docs/08_sprint8/ を参照。
 
 
 class Todo(SQLModel, table=True):

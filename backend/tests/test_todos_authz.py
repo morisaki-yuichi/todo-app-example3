@@ -9,10 +9,10 @@ from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, select
+from sqlmodel import Session
 
-from app.models import Todo, User, UserSession, utcnow
-from tests.conftest import login_as
+from app.models import Todo, User
+from app.security import create_access_token
 
 
 def create_todo(session: Session, owner: User, title: str = "アリスの秘密") -> Todo:
@@ -44,15 +44,9 @@ def test_all_todo_endpoints_require_login(
     assert response.status_code == 401
 
 
-def test_expired_session_is_401(
-    client: TestClient, session: Session, user: User
-) -> None:
-    login_as(client, session, user)
-    # セッションを期限切れに書き換える
-    user_session = session.exec(select(UserSession)).first()
-    user_session.expires_at = utcnow() - timedelta(seconds=1)
-    session.add(user_session)
-    session.commit()
+def test_expired_token_is_401(client: TestClient, user: User) -> None:
+    expired = create_access_token(user.id, expires_in=timedelta(seconds=-1))
+    client.headers["Authorization"] = f"Bearer {expired}"
 
     assert client.get("/todos").status_code == 401
 

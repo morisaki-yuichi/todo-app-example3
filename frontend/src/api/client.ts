@@ -1,9 +1,17 @@
 /** API 呼び出しの共通処理。画面コンポーネントは fetch を直接使わず、
  *  必ずこの層（src/api/）を経由する。
- *  - /api プレフィックスの付与（Vite プロキシが剥がして API へ転送する）
+ *  - 接続先（別オリジンの API）の URL 付与。S8 でプロキシ方式から移行した
+ *  - Authorization: Bearer ヘッダーの付与（JWT。localStorage から取得）
  *  - JSON の変換と Content-Type の付与
  *  - エラーレスポンスの ApiError への変換（status で画面側が分岐できる）
  */
+
+import { getToken } from './token'
+
+// 別オリジンの API に直接アクセスする（CORS はサーバ側で許可済み）。
+// 接続先はルート .env の VITE_API_URL（Vite が import.meta.env に注入する）
+const API_BASE_URL: string =
+  import.meta.env.VITE_API_URL ?? 'http://localhost:8002'
 
 export class ApiError extends Error {
   readonly status: number
@@ -22,9 +30,11 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`/api${path}`, {
+  const token = getToken()
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.body !== undefined
         ? { 'Content-Type': 'application/json' }
         : {}),

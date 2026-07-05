@@ -37,14 +37,15 @@ uv run alembic upgrade head      # テーブル作成（これを忘れると /t
 uv run python -m scripts.seed    # デモユーザー2人 + TODO 17件を投入（任意）
 ```
 
-TODO API はログイン必須（未ログインは 401）。シードのデモユーザーでログインできます:
+TODO API はログイン必須（未ログインは 401）。認証は JWT（Bearer トークン）です:
 
 ```bash
-# alice でログインし、cookie を使って自分の TODO 一覧を取得
-curl -s -c /tmp/alice.jar -X POST http://localhost:8002/auth/login \
+# alice でログインしてトークンを取得し、自分の TODO 一覧を取得
+TOKEN=$(curl -s -X POST http://localhost:8002/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "alice@example.com", "password": "password123"}'
-curl -s -b /tmp/alice.jar http://localhost:8002/todos
+  -d '{"email": "alice@example.com", "password": "password123"}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+curl -s http://localhost:8002/todos -H "Authorization: Bearer $TOKEN"
 ```
 
 テスト（テスト専用 DB `todo_test` を自動作成して実行される）:
@@ -53,7 +54,7 @@ curl -s -b /tmp/alice.jar http://localhost:8002/todos
 uv run pytest
 ```
 
-フロントエンド（Vite 開発サーバ。API へは `/api` プロキシで接続）:
+フロントエンド（Vite 開発サーバ。API へは別オリジンで直接接続・CORS 許可済み）:
 
 ```bash
 cd frontend
@@ -99,3 +100,5 @@ npm test        # Vitest
   （[レビュー](docs/06_sprint6/review.md) / [レトロ](docs/06_sprint6/retrospective.md)）
 - [スプリント7: 詳細画面 + 作成・編集・削除フォーム](docs/07_sprint7/backlog.md)
   （[レビュー](docs/07_sprint7/review.md) / [レトロ](docs/07_sprint7/retrospective.md)）
+- [スプリント8: JWT + CORS への移行](docs/08_sprint8/backlog.md)
+  （[レビュー](docs/08_sprint8/review.md) / [レトロ](docs/08_sprint8/retrospective.md)）

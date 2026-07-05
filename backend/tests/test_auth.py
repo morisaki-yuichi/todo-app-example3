@@ -1,4 +1,8 @@
+from datetime import timedelta
+
 from fastapi.testclient import TestClient
+
+from app.security import create_access_token
 
 ALICE = {"email": "alice@example.com", "password": "password123"}
 
@@ -7,23 +11,27 @@ def register(client: TestClient, **overrides) -> object:
     return client.post("/auth/register", json={**ALICE, **overrides})
 
 
-def test_register_returns_201_without_password(client: TestClient) -> None:
+def auth_header(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_register_returns_token_and_user(client: TestClient) -> None:
     response = register(client)
 
     assert response.status_code == 201
     body = response.json()
-    assert body["email"] == "alice@example.com"
-    assert "id" in body
+    assert body["token_type"] == "bearer"
+    assert body["access_token"]
+    assert body["user"]["email"] == "alice@example.com"
     # パスワード（ハッシュ含む）はレスポンスに出さない
-    assert "password" not in body
-    assert "password_hash" not in body
+    assert "password" not in body["user"]
+    assert "password_hash" not in body["user"]
 
 
-def test_register_logs_user_in(client: TestClient) -> None:
-    register(client)
+def test_register_token_is_immediately_usable(client: TestClient) -> None:
+    token = register(client).json()["access_token"]
 
-    # 登録直後から /auth/me が通る（自動ログイン）
-    response = client.get("/auth/me")
+    response = client.get("/auth/me", headers=auth_header(token))
 
     assert response.status_code == 200
     assert response.json()["email"] == "alice@example.com"
@@ -51,19 +59,18 @@ def test_register_short_password_is_422(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_login_success(client: TestClient) -> None:
+def test_login_returns_usable_token(client: TestClient) -> None:
     register(client)
-    client.post("/auth/logout")
 
     response = client.post("/auth/login", json=ALICE)
 
     assert response.status_code == 200
-    assert client.get("/auth/me").status_code == 200
+    token = response.json()["access_token"]
+    assert client.get("/auth/me", headers=auth_header(token)).status_code == 200
 
 
 def test_login_failures_share_same_message(client: TestClient) -> None:
     register(client)
-    client.post("/auth/logout")
 
     wrong_password = client.post(
         "/auth/login", json={**ALICE, "password": "wrongwrong"}
@@ -78,14 +85,22 @@ def test_login_failures_share_same_message(client: TestClient) -> None:
     assert wrong_password.json() == unknown_email.json()
 
 
-def test_logout_invalidates_session(client: TestClient) -> None:
-    register(client)
-
-    response = client.post("/auth/logout")
-
-    assert response.status_code == 204
+def test_me_requires_token(client: TestClient) -> None:
     assert client.get("/auth/me").status_code == 401
 
 
-def test_me_requires_login(client: TestClient) -> None:
-    assert client.get("/auth/me").status_code == 401
+def test_me_rejects_tampered_token(client: TestClient) -> None:
+    token = register(client).json()["access_token"]
+    tampered = token[:-4] + ("AAAA" if not token.endswith("AAAA") else "BBBB")
+
+    response = client.get("/auth/me", headers=auth_header(tampered))
+
+    assert response.status_code == 401
+
+
+def test_me_rejects_expired_token(client: TestClient, session, user) -> None:
+    expired = create_access_token(user.id, expires_in=timedelta(seconds=-1))
+
+    response = client.get("/auth/me", headers=auth_header(expired))
+
+    assert response.status_code == 401

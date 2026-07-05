@@ -13,7 +13,8 @@ export type AuthContextValue = {
   initializing: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string) => Promise<void>
-  logout: () => Promise<void>
+  /** JWT では同期処理（トークン破棄のみ。サーバ呼び出しなし） */
+  logout: () => void
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
